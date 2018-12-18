@@ -1,0 +1,27 @@
+Bomberman
+
+Environment:
+	13 x 9 (?) grid with indestructible pillars and outer wall
+	randomly placed destructible walls at the start
+	wrap-around boundary?
+	location of all agents
+		+ possible item status / bomb placing status
+	location of all bombs
+		+ range and time until detonation
+	location of all items
+		- +1 point
+
+		- more radius
+		- additional bombs
+		- extra life
+		- insta-death
+		- defusal kit with 90% success rate
+
+Actions:
+	move horizontally and vertically (only onto empty tiles)
+	place a bomb (only on empty tiles, only N bombs per agent at any given time)
+
+Rewards/penalities:
+	+1 for killing another agent
+	+1 for being the last one standing
+	-1 for longest average thinking time
