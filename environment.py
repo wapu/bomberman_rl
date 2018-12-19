@@ -15,7 +15,7 @@ from items import *
 cols = 17
 rows = 17
 grid_size = 30
-grid_offset = (20,20)
+grid_offset = (45,45)
 actions = ['UP', 'DOWN', 'LEFT', 'RIGHT', 'BOMB', 'WAIT']
 timeout = 2.0
 
@@ -64,6 +64,15 @@ class BombeRLeWorld(object):
         # Tiles for rendering
         self.t_wall = pygame.image.load('assets/brick.png')
         self.t_crate = pygame.image.load('assets/crate.png')
+
+        # Font for scores and such
+        font_name = pygame.font.match_font('roboto')
+        self.fonts = {
+            'huge': pygame.font.Font(font_name, 32),
+            'big': pygame.font.Font(font_name, 20),
+            'medium': pygame.font.Font(font_name, 16),
+            'small': pygame.font.Font(font_name, 12),
+        }
 
         # Bookkeeping
         self.state = 'RUNNING'
@@ -245,9 +254,19 @@ class BombeRLeWorld(object):
             slowest = max(self.agents, key=lambda a: a.mean_time)
             self.logger.info(f'Agent <{slowest.name}> loses 1 point for being slowest (avg. {slowest.mean_time:.3f}s)')
             slowest.update_score(-1)
+            # Sort for highscores
+            self.agents.sort(key=lambda a: a.score, reverse=True)
 
         self.state = 'SCORES'
 
+    def render_text(self, text, x, y, color, hcenter=False, vcenter=False, size='medium'):
+        text_surface = self.fonts[size].render(text, True, color)
+        text_rect = text_surface.get_rect()
+        if     hcenter   and (not vcenter): text_rect.midtop  = (x,y)
+        if     hcenter   and       vcenter: text_rect.mid     = (x,y)
+        if (not hcenter) and       vcenter: text_rect.midleft = (x,y)
+        if (not hcenter) and (not vcenter): text_rect.topleft = (x,y)
+        self.screen.blit(text_surface, text_rect)
 
     def render(self):
         self.screen.blit(self.background, (0,0))
@@ -278,9 +297,8 @@ class BombeRLeWorld(object):
                 explosion.render(self.screen)
 
         elif self.state == 'SCORES':
-            font_name = pygame.font.match_font('arial')
-            font = pygame.font.Font(font_name, 18)
-            text_surface = font.render('Scores', True, (200,200,200))
-            text_rect = text_surface.get_rect()
-            text_rect.midtop = (self.width/2, 20)
-            self.screen.blit(text_surface, text_rect)
+            self.render_text('Scores', self.width/2, 50, (200,200,200), hcenter=True, size='huge')
+            for i, a in enumerate(self.agents):
+                a.render(self.screen, self.width/2 - 150, 150 + 50*i - 15)
+                self.render_text(a.name, self.width/2 - 100, 150 + 50*i, (200,200,200), vcenter=True)
+                self.render_text(f'{a.score: d}', self.width/2 + 100, 150 + 50*i, (200,200,200), vcenter=True, size='big')
