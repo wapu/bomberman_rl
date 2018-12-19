@@ -36,7 +36,8 @@ class BombeRLeWorld(object):
         self.logger.info('Initializing game world')
 
         # Background
-        self.background = pygame.Surface(self.screen.get_size())
+        self.width, self.height = self.screen.get_size()
+        self.background = pygame.Surface((self.width, self.height))
         self.background = self.background.convert()
         self.background.fill((0,0,0))
 
@@ -51,8 +52,8 @@ class BombeRLeWorld(object):
                 if (x+1)*(y+1) % 2 == 1:
                     self.arena[x,y] = -1
 
-        # Available colors and starting positions
-        self.colors = [(255,0,0), (0,255,0), (0,0,255), (0,255,255)]
+        # Available robot colors and starting positions
+        self.colors = ['blue', 'green', 'yellow', 'pink']
         self.start_positions = [(1,1), (1,rows-2), (cols-2,1), (cols-2,rows-2)]
         # Clear some space around starting positions
         for (x,y) in self.start_positions:
@@ -61,10 +62,8 @@ class BombeRLeWorld(object):
                     self.arena[xx,yy] = 0
 
         # Tiles for rendering
-        self.t_wall = pygame.Surface((grid_size,grid_size))
-        self.t_wall.fill((60,60,60))
-        self.t_debris = pygame.Surface((grid_size,grid_size))
-        self.t_debris.fill((100,100,100))
+        self.t_wall = pygame.image.load('assets/brick.png')
+        self.t_crate = pygame.image.load('assets/crate.png')
 
         # Bookkeeping
         self.state = 'RUNNING'
@@ -203,16 +202,17 @@ class BombeRLeWorld(object):
             if explosion.timer < 0:
                 explosion.active = False
             # Kill agents
-            for a in self.active_agents:
-                if (not a.dead) and (a.x, a.y) in explosion.blast_coords:
-                    agents_hit.append(a)
-                    # Note who killed whom, adjust scores
-                    if a is explosion.owner:
-                        self.logger.info(f'Agent <{a.name}> blown up by own bomb')
-                    else:
-                        self.logger.info(f'Agent <{a.name}> blown up by agent <{explosion.owner.name}>\'s bomb')
-                        self.logger.info(f'Agent <{explosion.owner.name}> receives 1 point')
-                        explosion.owner.update_score(1)
+            if explosion.timer > 0:
+                for a in self.active_agents:
+                    if (not a.dead) and (a.x, a.y) in explosion.blast_coords:
+                        agents_hit.append(a)
+                        # Note who killed whom, adjust scores
+                        if a is explosion.owner:
+                            self.logger.info(f'Agent <{a.name}> blown up by own bomb')
+                        else:
+                            self.logger.info(f'Agent <{a.name}> blown up by agent <{explosion.owner.name}>\'s bomb')
+                            self.logger.info(f'Agent <{explosion.owner.name}> receives 1 point')
+                            explosion.owner.update_score(1)
         for a in agents_hit:
             a.dead = True
             self.active_agents.remove(a)
@@ -260,7 +260,7 @@ class BombeRLeWorld(object):
                     if self.arena[x,y] == -1:
                         self.screen.blit(self.t_wall, (grid_offset[0] + grid_size*x, grid_offset[1] + grid_size*y))
                     if self.arena[x,y] == 1:
-                        self.screen.blit(self.t_debris, (grid_offset[0] + grid_size*x, grid_offset[1] + grid_size*y))
+                        self.screen.blit(self.t_crate, (grid_offset[0] + grid_size*x, grid_offset[1] + grid_size*y))
 
             # Items
             self.logger.debug(f'RENDERING items')
@@ -278,4 +278,9 @@ class BombeRLeWorld(object):
                 explosion.render(self.screen)
 
         elif self.state == 'SCORES':
-            pass
+            font_name = pygame.font.match_font('arial')
+            font = pygame.font.Font(font_name, 18)
+            text_surface = font.render('Scores', True, (200,200,200))
+            text_rect = text_surface.get_rect()
+            text_rect.midtop = (self.width/2, 20)
+            self.screen.blit(text_surface, text_rect)

@@ -99,9 +99,7 @@ class Agent(object):
         self.color = color
         self.train_flag = train_flag
 
-        self.avatar = pygame.Surface((20,20))
-        self.avatar.fill(self.color)
-        self.offset = (5,5)
+        self.avatar = pygame.image.load(f'assets/robot_{self.color}.png')
 
         self.x, self.y = 1, 1
         self.score = 0
@@ -110,7 +108,7 @@ class Agent(object):
         self.reward = 0
 
         self.bomb_timer = 5
-        self.explosion_timer = 2
+        self.explosion_timer = 3
         self.bomb_power = 3
         self.bombs_left = 1
         self.bomb_type = Bomb
@@ -124,10 +122,10 @@ class Agent(object):
         self.reward += delta
 
     def make_bomb(self):
-        return self.bomb_type((self.x, self.y), self, self.bomb_timer, self.bomb_power)
+        return self.bomb_type((self.x, self.y), self, self.bomb_timer, self.bomb_power, self.color)
 
     def render(self, screen, x, y):
-        screen.blit(self.avatar, (x + self.offset[0], y + self.offset[1]))
+        screen.blit(self.avatar, (x, y))
 
 
 # class UserAgent(Agent):
