@@ -9,6 +9,8 @@ def setup(agent):
 
 def act(agent):
     agent.logger.info('Pick action at random')
+    # if np.random.rand() > 0.9:
+    #     sleep(2.1)
     sleep(0.1 * np.random.rand())
     agent.next_action = np.random.choice(['RIGHT', 'LEFT', 'UP', 'DOWN', 'BOMB'])
 

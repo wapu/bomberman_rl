@@ -4,6 +4,7 @@ with contextlib.redirect_stdout(None):
     import pygame
 from pygame.locals import *
 import numpy as np
+import multiprocessing as mp
 
 from environment import BombeRLeWorld
 
@@ -15,6 +16,9 @@ INTERACTIVE = False
 
 
 def main():
+    # Emulate Windows process spawning behaviour under Unix (for testing)
+    # mp.set_start_method('spawn')
+
     # Initialize screen
     pygame.init()
     screen = pygame.display.set_mode((600, 600))

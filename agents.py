@@ -20,6 +20,7 @@ class AgentProcess(mp.Process):
         self.filename = filename
         self.train_flag = train_flag
 
+    def run(self):
         # Set up logging
         self.wlogger = logging.getLogger(self.name + '_wrapper')
         self.wlogger.setLevel(logging.INFO)
@@ -33,11 +34,10 @@ class AgentProcess(mp.Process):
         self.logger.addHandler(handler)
 
         # Import custom code for the agent
-        self.wlogger.info(f'Import agent code from "agent_code/{filename}.py"')
-        self.code = importlib.import_module('agent_code.' + filename)
+        self.wlogger.info(f'Import agent code from "agent_code/{self.filename}.py"')
+        self.code = importlib.import_module('agent_code.' + self.filename)
 
-    def run(self):
-        # Initialize everything
+        # Initialize custom code
         self.wlogger.info('Initialize agent code')
         self.code.setup(self)
         self.wlogger.debug('Set flag to indicate readiness')
