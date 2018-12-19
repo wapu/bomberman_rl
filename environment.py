@@ -144,12 +144,18 @@ class BombeRLeWorld(object):
             self.logger.debug(f'Sending game state to agent <{a.name}>')
             a.pipe.send(self.get_state_for_agent(a))
 
-        # Send reward to all agents that expect it, then reset it
+        # Send reward to all agents that expect it, then reset it and wait for them
         for a in self.active_agents:
             if a.train_flag.is_set():
                 self.logger.debug(f'Sending reward {a.reward} to agent <{a.name}>')
                 a.pipe.send(a.reward)
             a.reward = 0
+        for a in self.active_agents:
+            if a.train_flag.is_set():
+                self.logger.debug(f'Waiting for agent <{a.name}> to process rewards')
+                a.ready_flag.wait()
+                self.logger.debug(f'Clearing flag for agent <{a.name}>')
+                a.ready_flag.clear()
 
         # Give agents time to decide and set their ready flags; interrupt after time limit
         deadline = time() + timeout
@@ -259,6 +265,7 @@ class BombeRLeWorld(object):
 
         self.state = 'SCORES'
 
+
     def render_text(self, text, x, y, color, hcenter=False, vcenter=False, size='medium'):
         text_surface = self.fonts[size].render(text, True, color)
         text_rect = text_surface.get_rect()
@@ -267,6 +274,7 @@ class BombeRLeWorld(object):
         if (not hcenter) and       vcenter: text_rect.midleft = (x,y)
         if (not hcenter) and (not vcenter): text_rect.topleft = (x,y)
         self.screen.blit(text_surface, text_rect)
+
 
     def render(self):
         self.screen.blit(self.background, (0,0))

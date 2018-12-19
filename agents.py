@@ -60,6 +60,8 @@ class AgentProcess(mp.Process):
                 self.wlogger.debug(f'Received global reward {self.reward}')
                 self.wlogger.info('Process intermediate rewards')
                 self.code.reward_update(self)
+                self.wlogger.debug('Set flag to indicate readiness')
+                self.ready_flag.set()
 
             # Come up with an action to perform
             self.wlogger.debug('Begin choosing an action')
