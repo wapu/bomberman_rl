@@ -7,25 +7,17 @@ import numpy as np
 import multiprocessing as mp
 
 from environment import BombeRLeWorld
-
-
-FPS = 3
-FAST_MODE = False
-RENDER = True
-INTERACTIVE = False
+from settings import s
 
 
 def main():
+    pygame.init()
+
     # Emulate Windows process spawning behaviour under Unix (for testing)
     # mp.set_start_method('spawn')
 
-    # Initialize screen
-    pygame.init()
-    screen = pygame.display.set_mode((600, 600))
-    pygame.display.set_caption('BombeRLe')
-
     # Initialize environment
-    world = BombeRLeWorld(screen)
+    world = BombeRLeWorld()
 
     # Initialize agents
     world.add_agent('example_agent', train=True)
@@ -34,45 +26,45 @@ def main():
     world.add_agent('example_agent')
 
     # Initial render
-    if RENDER:
+    if s.gui:
         world.render()
         pygame.display.flip()
+        clock = pygame.time.Clock()
 
-    # Event loop
-    clock = pygame.time.Clock()
+    # Main loop
     quit = False
     while not quit:
-        # grab inputs
-        pressed_key = None
+        # Grab events
+        key_pressed = None
         for event in pygame.event.get():
             if event.type == QUIT:
                 world.wrap_up()
                 quit = True
             elif event.type == pygame.locals.KEYDOWN:
-                pressed_key = event.key
-                if pressed_key in (K_q, K_ESCAPE):
+                key_pressed = event.key
+                if key_pressed in (K_q, K_ESCAPE):
                     world.wrap_up()
                     quit = True
-        if INTERACTIVE:
-            useragent.input = pressed_key
 
-        if (not INTERACTIVE) or pressed_key:
-            # game logic
-            if world.state == 'RUNNING':
+        # Game logic
+        if (not s.wait_for_keyboard) or key_pressed:
+            if world.running:
                 try:
                     world.update()
                 except Exception as e:
-                    print(f'Wrapping up game...')
                     world.wrap_up()
                     raise
+            else:
+                if not s.gui:
+                    quit = True
 
-            # render screen
-            if RENDER:
-                world.render()
-                pygame.display.flip()
+        # Rendering
+        if s.gui:
+            world.render()
+            pygame.display.flip()
 
-                if not (FAST_MODE or INTERACTIVE):
-                    clock.tick(FPS)
+            if not (s.fast_mode or s.wait_for_keyboard):
+                clock.tick(s.fps)
 
 if __name__ == '__main__':
     main()

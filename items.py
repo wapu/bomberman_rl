@@ -12,6 +12,16 @@ class Item(object):
         screen.blit(self.avatar, (x, y))
 
 
+class Coin(Item):
+
+    def __init__(self, pos):
+        super(Coin, self).__init__()
+        self.x = pos[0]
+        self.y = pos[1]
+        self.avatar = pygame.image.load('assets/coin.png')
+        self.picked_up = False
+
+
 class Bomb(Item):
 
     def __init__(self, pos, owner, timer, power, color):

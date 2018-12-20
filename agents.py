@@ -106,6 +106,7 @@ class Agent(object):
         self.x, self.y = 1, 1
         self.score = 0
         self.times = []
+        self.mean_time = 0
         self.dead = False
         self.reward = 0
 
