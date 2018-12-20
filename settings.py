@@ -6,10 +6,10 @@ settings = {
     'width': 1000,
     'height': 600,
     'gui': True,
+    'fps': 25,
 
     # Main loop
-    'fps': 3,
-    'fast_mode': False,
+    'update_interval': 0.5,
     'wait_for_keyboard': False,
 
     # Game properties

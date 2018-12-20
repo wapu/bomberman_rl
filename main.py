@@ -1,4 +1,5 @@
 
+from time import time
 import contextlib
 with contextlib.redirect_stdout(None):
     import pygame
@@ -29,10 +30,12 @@ def main():
     if s.gui:
         world.render()
         pygame.display.flip()
-        clock = pygame.time.Clock()
 
-    # Main loop
     quit = False
+    last_update = time()
+    last_frame = time()
+
+    # Main game loop
     while not quit:
         # Grab events
         key_pressed = None
@@ -47,24 +50,26 @@ def main():
                     quit = True
 
         # Game logic
-        if (not s.wait_for_keyboard) or key_pressed:
+        if ((s.wait_for_keyboard and not key_pressed)
+                or (s.gui and (time()-last_update < s.update_interval))):
+            pass
+        else:
             if world.running:
+                last_update = time()
                 try:
                     world.update()
                 except Exception as e:
                     world.wrap_up()
                     raise
-            else:
-                if not s.gui:
-                    quit = True
+
+        if not world.running and not s.gui:
+            quit = True
 
         # Rendering
-        if s.gui:
+        if s.gui and (time()-last_frame >= 1./s.fps):
             world.render()
             pygame.display.flip()
 
-            if not (s.fast_mode or s.wait_for_keyboard):
-                clock.tick(s.fps)
 
 if __name__ == '__main__':
     main()
