@@ -1,5 +1,8 @@
 
 from collections import namedtuple
+import pygame
+from pygame.locals import *
+
 
 settings = {
     # Display
@@ -10,7 +13,7 @@ settings = {
 
     # Main loop
     'update_interval': 0.5,
-    'wait_for_keyboard': False,
+    'turn_based': False,
 
     # Game properties
     'cols': 17,
@@ -26,6 +29,17 @@ settings = {
     'reward_coin': 1,
     'reward_last': 3,
     'reward_slow': -1,
+
+    # User input
+    'input_map': {
+        K_UP: 'UP',
+        K_DOWN: 'DOWN',
+        K_LEFT: 'LEFT',
+        K_RIGHT: 'RIGHT',
+        K_RETURN: 'WAIT',
+        K_SPACE: 'BOMB',
+    },
+
 }
 settings['grid_offset'] = [(settings['height'] - settings['rows']*settings['grid_size'])//2] * 2
 s = namedtuple("Settings", settings.keys())(*settings.values())

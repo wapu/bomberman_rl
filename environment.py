@@ -142,6 +142,7 @@ class BombeRLeWorld(object):
             for (x,y) in e.blast_coords:
                 explosion_map[x,y] = max(explosion_map[x,y], e.timer)
         state['explosions'] = explosion_map
+        state['user_input'] = self.user_input
         return state
 
 
@@ -153,9 +154,12 @@ class BombeRLeWorld(object):
         return is_free
 
 
-    def update(self):
+    def do_step(self, user_input='WAIT'):
         self.step += 1
         self.logger.info(f'STARTING STEP {self.step}')
+
+        self.user_input = user_input
+        self.logger.debug(f'User input: {self.user_input}')
 
         # Send world state to all agents
         for a in self.active_agents:

@@ -80,6 +80,9 @@ class AgentProcess(mp.Process):
                     self.code.act(self)
                 except KeyboardInterrupt:
                     self.wlogger.warn(f'Got interrupted by timeout')
+                except Exception as e:
+                    # TODO
+                    pass
                 finally:
                     # Send action and time taken back to main process
                     t = time() - t

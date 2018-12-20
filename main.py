@@ -22,7 +22,7 @@ def main():
         ('example_agent', True),
         ('example_agent', False),
         ('example_agent', False),
-        ('example_agent', False)
+        ('user_agent', False)
     ])
 
     # Run one or more games
@@ -38,30 +38,37 @@ def main():
         round_finished = False
         last_update = time()
         last_frame = time()
+        user_inputs = []
 
         # Main game loop
         while not round_finished:
             # Grab events
             key_pressed = None
             for event in pygame.event.get():
-                if event.type == round_finished:
+                if event.type == QUIT:
                     world.end_round()
-                    round_finished = True
+                    return
                 elif event.type == pygame.locals.KEYDOWN:
                     key_pressed = event.key
                     if key_pressed in (K_q, K_ESCAPE):
                         world.end_round()
                         round_finished = True
+                    # Convert keyboard input into actions
+                    if s.input_map.get(key_pressed):
+                        if s.turn_based:
+                            user_inputs = [s.input_map.get(key_pressed),]
+                        else:
+                            user_inputs.append(s.input_map.get(key_pressed))
 
             # Game logic
-            if ((s.wait_for_keyboard and not key_pressed)
+            if ((s.turn_based and not key_pressed)
                     or (s.gui and (time()-last_update < s.update_interval))):
                 pass
             else:
                 if world.running:
                     last_update = time()
                     try:
-                        world.update()
+                        world.do_step(user_inputs.pop(0) if len(user_inputs) else 'WAIT')
                     except Exception as e:
                         world.end_round()
                         raise
