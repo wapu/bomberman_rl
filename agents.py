@@ -16,7 +16,6 @@ class AgentProcess(mp.Process):
         super(AgentProcess, self).__init__(name=name)
         self.pipe_to_world = pipe_to_world
         self.ready_flag = ready_flag
-        self.next_action = 'WAIT'
         self.filename = filename
         self.train_flag = train_flag
 
@@ -43,50 +42,62 @@ class AgentProcess(mp.Process):
         self.wlogger.debug('Set flag to indicate readiness')
         self.ready_flag.set()
 
-        # Repeat until exit message is received
+        # Repeat until global exit message is received
         while True:
-            # Receive new world state and check for exit message
-            self.wlogger.debug('Receive game state')
-            self.game_state = self.pipe_to_world.recv()
-            if self.game_state is None:
-                self.wlogger.info('Received exit message')
+            # Receive round number and check for exit message
+            self.wlogger.debug('Wait for new round')
+            self.round = self.pipe_to_world.recv()
+            if self.round is None:
+                self.wlogger.info('Received global exit message')
                 break
-            self.wlogger.info(f'STARTING STEP {self.game_state["step"]}')
+            self.wlogger.info(f'STARTING ROUND #{self.round}')
 
-            # Process intermediate rewards if in training mode
+            # Repeat until exit message for this round is received
+            while True:
+                # Receive new world state and check for exit message
+                self.wlogger.debug('Receive game state')
+                self.game_state = self.pipe_to_world.recv()
+                if self.game_state is None:
+                    self.wlogger.info('Received exit message for round')
+                    break
+                self.wlogger.info(f'STARTING STEP {self.game_state["step"]}')
+
+                # Process intermediate rewards if in training mode
+                if self.train_flag.is_set():
+                    self.wlogger.debug('Receive global reward')
+                    self.reward = self.pipe_to_world.recv()
+                    self.wlogger.debug(f'Received global reward {self.reward}')
+                    self.wlogger.info('Process intermediate rewards')
+                    self.code.reward_update(self)
+                    self.wlogger.debug('Set flag to indicate readiness')
+                    self.ready_flag.set()
+
+                # Come up with an action to perform
+                self.wlogger.debug('Begin choosing an action')
+                self.next_action = 'WAIT'
+                t = time()
+                try:
+                    self.code.act(self)
+                except KeyboardInterrupt:
+                    self.wlogger.warn(f'Got interrupted by timeout')
+                finally:
+                    # Send action and time taken back to main process
+                    t = time() - t
+                    self.wlogger.info(f'Chose action {self.next_action} after {t:.3f}s of thinking')
+                    self.wlogger.debug('Send action and time to main process')
+                    self.pipe_to_world.send((self.next_action, t))
+                    self.wlogger.debug('Set flag to indicate readiness')
+                    self.ready_flag.set()
+
+            # Learn from episode if in training mode
             if self.train_flag.is_set():
-                self.wlogger.debug('Receive global reward')
+                self.wlogger.info('Finalize agent\'s training')
+                self.wlogger.debug('Receive final reward')
                 self.reward = self.pipe_to_world.recv()
-                self.wlogger.debug(f'Received global reward {self.reward}')
-                self.wlogger.info('Process intermediate rewards')
-                self.code.reward_update(self)
-                self.wlogger.debug('Set flag to indicate readiness')
-                self.ready_flag.set()
+                self.wlogger.debug(f'Received final reward {self.reward}')
+                self.code.learn(self)
 
-            # Come up with an action to perform
-            self.wlogger.debug('Begin choosing an action')
-            self.next_action = 'WAIT'
-            t = time()
-            try:
-                self.code.act(self)
-            except KeyboardInterrupt:
-                self.wlogger.warn(f'Got interrupted by timeout')
-            finally:
-                # Send action and time taken back to main process
-                t = time() - t
-                self.wlogger.info(f'Chose action {self.next_action} after {t:.3f}s of thinking')
-                self.wlogger.debug('Send action and time to main process')
-                self.pipe_to_world.send((self.next_action, t))
-                self.wlogger.debug('Set flag to indicate readiness')
-                self.ready_flag.set()
-
-        # Learn from episode if in training mode
-        if self.train_flag.is_set():
-            self.wlogger.info('Finalize agent\'s training')
-            self.wlogger.debug('Receive final reward')
-            self.reward = self.pipe_to_world.recv()
-            self.wlogger.debug(f'Received final reward {self.reward}')
-            self.code.learn(self)
+            self.wlogger.info(f'Round #{self.round} finished')
 
         self.wlogger.info('SHUT DOWN')
 
@@ -104,11 +115,7 @@ class Agent(object):
         self.avatar = pygame.image.load(f'assets/robot_{self.color}.png')
 
         self.x, self.y = 1, 1
-        self.score = 0
-        self.times = []
-        self.mean_time = 0
-        self.dead = False
-        self.reward = 0
+        self.total_score = 0
 
         self.bomb_timer = 5
         self.explosion_timer = 3
@@ -116,12 +123,22 @@ class Agent(object):
         self.bombs_left = 1
         self.bomb_type = Bomb
 
+        self.reset()
+
+    def reset(self):
+        self.times = []
+        self.mean_time = 0
+        self.dead = False
+        self.score = 0
+        self.reward = 0
+
     def get_state(self):
         # return ((self.x, self.y), self.bomb_timer, self.explosion_timer, self.bomb_power, self.bombs_left, self.name)
         return (self.x, self.y, self.name)
 
     def update_score(self, delta):
         self.score += delta
+        self.total_score += delta
         self.reward += delta
 
     def make_bomb(self):

@@ -15,7 +15,7 @@ from settings import s
 
 class BombeRLeWorld(object):
 
-    def __init__(self):
+    def __init__(self, agents):
         # Set up logging
         self.logger = logging.getLogger('BombeRLeWorld')
         self.logger.setLevel(logging.INFO)
@@ -26,25 +26,8 @@ class BombeRLeWorld(object):
         self.logger.addHandler(handler)
         self.logger.info('Initializing game world')
 
-        # Arena with wall layout
-        self.arena = (np.random.rand(s.cols, s.rows) > 0.25).astype(int)
-        self.arena[:1, :] = -1
-        self.arena[-1:,:] = -1
-        self.arena[:, :1] = -1
-        self.arena[:,-1:] = -1
-        for x in range(s.cols):
-            for y in range(s.rows):
-                if (x+1)*(y+1) % 2 == 1:
-                    self.arena[x,y] = -1
-
-        # Available robot colors and starting positions
+        # Available robot colors
         self.colors = ['blue', 'green', 'yellow', 'pink']
-        self.start_positions = [(1,1), (1,s.rows-2), (s.cols-2,1), (s.cols-2,s.rows-2)]
-        # Clear some space around starting positions
-        for (x,y) in self.start_positions:
-            for (xx,yy) in [(x,y), (x-1,y), (x+1,y), (x,y-1), (x,y+1)]:
-                if self.arena[xx,yy] == 1:
-                    self.arena[xx,yy] = 0
 
         if s.gui:
             # Initialize screen
@@ -67,18 +50,62 @@ class BombeRLeWorld(object):
                 'small': pygame.font.Font(font_name, 12),
             }
 
+        # Add specified agents and start their subprocesses
+        self.agents = []
+        for filename, train in agents:
+            self.add_agent(filename, train=train)
+
+        # Get the game going
+        self.round = 0
+        self.running = False
+        self.new_round()
+
+
+    def new_round(self):
+        if self.running:
+            self.logger.warn('New round requested while still running')
+            self.end_round()
+
+        self.round += 1
+        self.logger.info(f'STARTING ROUND #{self.round}')
+
         # Bookkeeping
         self.running = True
         self.step = 0
-        self.agents = []
         self.active_agents = []
         self.coins = []
         self.bombs = []
         self.explosions = []
 
+        # Arena with wall layout
+        self.arena = (np.random.rand(s.cols, s.rows) > 0.25).astype(int)
+        self.arena[:1, :] = -1
+        self.arena[-1:,:] = -1
+        self.arena[:, :1] = -1
+        self.arena[:,-1:] = -1
+        for x in range(s.cols):
+            for y in range(s.rows):
+                if (x+1)*(y+1) % 2 == 1:
+                    self.arena[x,y] = -1
+
+        # Starting positions
+        self.start_positions = [(1,1), (1,s.rows-2), (s.cols-2,1), (s.cols-2,s.rows-2)]
+        random.shuffle(self.start_positions)
+        for (x,y) in self.start_positions:
+            for (xx,yy) in [(x,y), (x-1,y), (x+1,y), (x,y-1), (x,y+1)]:
+                if self.arena[xx,yy] == 1:
+                    self.arena[xx,yy] = 0
+
+        # Reset agents and distribute starting positions
+        for agent in self.agents:
+            agent.reset()
+            agent.pipe.send(self.round)
+            self.active_agents.append(agent)
+            agent.x, agent.y = self.start_positions.pop()
+
 
     def add_agent(self, filename, train=False):
-        if len(self.start_positions) > 0:
+        if len(self.agents) < s.max_agents:
             # Add unique suffix to name
             name = filename + '_' + str(list([a.process.filename for a in self.agents]).count(filename))
 
@@ -92,12 +119,9 @@ class BombeRLeWorld(object):
             self.logger.info(f'Starting process for agent <{name}>')
             p.start()
 
-            # Create the agent container and assign random starting slot
+            # Create the agent container object
             agent = Agent(p, pipe_to_agent, ready_flag, self.colors.pop(), train_flag)
-            random.shuffle(self.start_positions)
-            agent.x, agent.y = self.start_positions.pop()
             self.agents.append(agent)
-            self.active_agents.append(agent)
 
             # Make sure process setup is finished
             self.logger.debug(f'Waiting for setup of agent <{agent.name}>')
@@ -239,23 +263,23 @@ class BombeRLeWorld(object):
         for a in agents_hit:
             a.dead = True
             self.active_agents.remove(a)
-            # Send exit message to shut down agent
+            # Send exit message to end round for this agent
             a.pipe.send(None)
         self.explosions = [e for e in self.explosions if e.active]
 
         if len(self.active_agents) <= 1:
             self.logger.debug(f'Only {len(self.active_agents)} agent(s) left, wrap up game')
-            self.wrap_up()
+            self.end_round()
 
 
-    def wrap_up(self):
+    def end_round(self):
         if self.running:
-            self.logger.info('WRAPPING UP GAME')
+            self.logger.info(f'WRAPPING UP ROUND #{self.round}')
             for a in self.active_agents:
                 # Reward survivor(s)
                 self.logger.info(f'Agent <{a.name}> receives 1 point for surviving')
                 a.update_score(s.reward_last)
-                # Send exit message to shut down agent
+                # Send exit message to end round for this agent
                 self.logger.debug(f'Sending exit message to agent <{a.name}>')
                 a.pipe.send(None)
             for a in self.agents:
@@ -269,6 +293,16 @@ class BombeRLeWorld(object):
             slowest.update_score(s.reward_slow)
 
             self.running = False
+
+        else:
+            self.logger.warn('End-of-round requested while no round was running')
+
+    def end(self):
+        self.logger.info('SHUT DOWN')
+        for a in self.agents:
+            # Send exit message to shut down agent
+            self.logger.debug(f'Sending exit message to agent <{a.name}>')
+            a.pipe.send(None)
 
 
     def render_text(self, text, x, y, color, hcenter=False, vcenter=False, size='medium'):
@@ -318,5 +352,6 @@ class BombeRLeWorld(object):
         for i, a in enumerate(self.agents):
             a.render(self.screen, 600, y_base + 50*i - 15)
             self.render_text(a.name, 650, y_base + 50*i, (200,200,200), vcenter=True)
-            self.render_text(f'{a.score: d}', 850, y_base + 50*i, (255,255,255), vcenter=True, size='big')
-            self.render_text(f'({a.mean_time: .3f})', 900, y_base + 50*i, (100,100,100), vcenter=True, size='small')
+            self.render_text(f'{a.score: d}', 830, y_base + 50*i, (255,255,255), vcenter=True, size='big')
+            self.render_text(f'{a.total_score: d}', 880, y_base + 50*i, (100,100,100), vcenter=True, size='big')
+            self.render_text(f'({a.mean_time: .3f})', 930, y_base + 50*i, (100,100,100), vcenter=True, size='small')

@@ -17,6 +17,7 @@ settings = {
     'rows': 17,
     'grid_size': 30,
     'actions': ['UP', 'DOWN', 'LEFT', 'RIGHT', 'BOMB', 'WAIT'],
+    'max_agents': 4,
     'coin_drop_rate': 0.1,
 
     # Rules for agents
