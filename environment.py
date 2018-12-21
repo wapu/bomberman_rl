@@ -42,12 +42,13 @@ class BombeRLeWorld(object):
             self.t_crate = pygame.image.load('assets/crate.png')
 
             # Font for scores and such
-            font_name = pygame.font.match_font('roboto')
+            # font_name = pygame.font.match_font('roboto')
+            font_name = 'assets/emulogic.ttf'
             self.fonts = {
-                'huge': pygame.font.Font(font_name, 32),
-                'big': pygame.font.Font(font_name, 20),
-                'medium': pygame.font.Font(font_name, 16),
-                'small': pygame.font.Font(font_name, 12),
+                'huge': pygame.font.Font(font_name, 28),
+                'big': pygame.font.Font(font_name, 16),
+                'medium': pygame.font.Font(font_name, 10),
+                'small': pygame.font.Font(font_name, 8),
             }
 
         # Add specified agents and start their subprocesses
@@ -310,9 +311,10 @@ class BombeRLeWorld(object):
             a.pipe.send(None)
 
 
-    def render_text(self, text, x, y, color, halign='left', valign='top', size='medium'):
+    def render_text(self, text, x, y, color, halign='left', valign='top',
+                    size='medium', aa=False):
         if not s.gui: return
-        text_surface = self.fonts[size].render(text, True, color)
+        text_surface = self.fonts[size].render(text, aa, color)
         text_rect = text_surface.get_rect()
         if halign == 'left':   text_rect.left    = x
         if halign == 'center': text_rect.centerx = x
@@ -358,10 +360,15 @@ class BombeRLeWorld(object):
         y_base = s.grid_offset[1] + 15
         for i, a in enumerate(self.agents):
             a.render(self.screen, 600, y_base + 50*i - 15)
-            self.render_text(a.name, 650, y_base + 50*i, (200,200,200), valign='center')
-            self.render_text(f'{a.score:d}', 850, y_base + 50*i, (255,255,255),
+            if not a.dead:
+                self.render_text(a.name, 650, y_base + 50*i, (255,255,255),
+                                 valign='center', size='small')
+            else:
+                self.render_text(a.name, 650, y_base + 50*i, (64,64,64),
+                                 valign='center', size='small')
+            self.render_text(f'{a.score:d}', 830, y_base + 50*i, (255,255,255),
                              valign='center', halign='right', size='big')
-            self.render_text(f'{a.total_score:d}', 900, y_base + 50*i, (100,100,100),
+            self.render_text(f'{a.total_score:d}', 890, y_base + 50*i, (64,64,64),
                              valign='center', halign='right', size='big')
-            self.render_text(f'({a.mean_time:.3f})', 930, y_base + 50*i, (100,100,100),
+            self.render_text(f'({a.mean_time:.3f})', 930, y_base + 50*i, (128,128,128),
                              valign='center', size='small')

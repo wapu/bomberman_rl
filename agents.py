@@ -43,8 +43,7 @@ class AgentProcess(mp.Process):
         try:
             self.code.setup(self)
         except Exception as e:
-            # TODO
-            pass
+            self.wlogger.exception(f'Error in callback function: {e}')
         self.wlogger.debug('Set flag to indicate readiness')
         self.ready_flag.set()
 
@@ -77,8 +76,7 @@ class AgentProcess(mp.Process):
                     try:
                         self.code.reward_update(self)
                     except Exception as e:
-                        # TODO
-                        pass
+                        self.wlogger.exception(f'Error in callback function: {e}')
                     self.wlogger.debug('Set flag to indicate readiness')
                     self.ready_flag.set()
 
@@ -91,8 +89,7 @@ class AgentProcess(mp.Process):
                 except KeyboardInterrupt:
                     self.wlogger.warn(f'Got interrupted by timeout')
                 except Exception as e:
-                    # TODO
-                    pass
+                    self.wlogger.exception(f'Error in callback function: {e}')
                 finally:
                     # Send action and time taken back to main process
                     t = time() - t
@@ -111,8 +108,7 @@ class AgentProcess(mp.Process):
                 try:
                     self.code.end_of_episode(self)
                 except Exception as e:
-                    #TODO
-                    pass
+                    self.wlogger.exception(f'Error in callback function: {e}')
 
             self.wlogger.info(f'Round #{self.round} finished')
 
@@ -129,11 +125,16 @@ class Agent(object):
         self.color = color
         self.train_flag = train_flag
 
+        # Load custom avatar or robot avatar of assigned color
         try:
             self.avatar = pygame.image.load(f'agent_code/{self.process.agent_dir}/avatar.png')
             assert self.avatar.get_size() == (30,30)
         except Exception as e:
             self.avatar = pygame.image.load(f'assets/robot_{self.color}.png')
+
+        # Prepare overlay to indicate dead agent on the scoreboard
+        self.shade = pygame.Surface((30,30), SRCALPHA)
+        self.shade.fill((0,0,0,208))
 
         self.x, self.y = 1, 1
         self.total_score = 0
@@ -167,3 +168,5 @@ class Agent(object):
 
     def render(self, screen, x, y):
         screen.blit(self.avatar, (x, y))
+        if self.dead:
+            screen.blit(self.shade, (x, y))
