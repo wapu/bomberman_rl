@@ -52,8 +52,8 @@ class BombeRLeWorld(object):
 
         # Add specified agents and start their subprocesses
         self.agents = []
-        for filename, train in agents:
-            self.add_agent(filename, train=train)
+        for agent_dir, train in agents:
+            self.add_agent(agent_dir, train=train)
 
         # Get the game going
         self.round = 0
@@ -68,6 +68,7 @@ class BombeRLeWorld(object):
 
         self.round += 1
         self.logger.info(f'STARTING ROUND #{self.round}')
+        pygame.display.set_caption(f'BombeRLe | Round #{self.round}')
 
         # Bookkeeping
         self.running = True
@@ -104,10 +105,10 @@ class BombeRLeWorld(object):
             agent.x, agent.y = self.start_positions.pop()
 
 
-    def add_agent(self, filename, train=False):
+    def add_agent(self, agent_dir, train=False):
         if len(self.agents) < s.max_agents:
             # Add unique suffix to name
-            name = filename + '_' + str(list([a.process.filename for a in self.agents]).count(filename))
+            name = agent_dir + '_' + str(list([a.process.agent_dir for a in self.agents]).count(agent_dir))
 
             # Set up a new process to run the agent's code
             pipe_to_world, pipe_to_agent = mp.Pipe()
@@ -115,7 +116,7 @@ class BombeRLeWorld(object):
             train_flag = mp.Event()
             if train:
                 train_flag.set()
-            p = AgentProcess(pipe_to_world, ready_flag, name, filename, train_flag)
+            p = AgentProcess(pipe_to_world, ready_flag, name, agent_dir, train_flag)
             self.logger.info(f'Starting process for agent <{name}>')
             p.start()
 
@@ -309,14 +310,16 @@ class BombeRLeWorld(object):
             a.pipe.send(None)
 
 
-    def render_text(self, text, x, y, color, hcenter=False, vcenter=False, size='medium'):
+    def render_text(self, text, x, y, color, halign='left', valign='top', size='medium'):
         if not s.gui: return
         text_surface = self.fonts[size].render(text, True, color)
         text_rect = text_surface.get_rect()
-        if     hcenter   and (not vcenter): text_rect.midtop  = (x,y)
-        if     hcenter   and       vcenter: text_rect.mid     = (x,y)
-        if (not hcenter) and       vcenter: text_rect.midleft = (x,y)
-        if (not hcenter) and (not vcenter): text_rect.topleft = (x,y)
+        if halign == 'left':   text_rect.left    = x
+        if halign == 'center': text_rect.centerx = x
+        if halign == 'right':  text_rect.right   = x
+        if valign == 'top':    text_rect.top     = y
+        if valign == 'center': text_rect.centery = y
+        if valign == 'bottom': text_rect.bottom  = y
         self.screen.blit(text_surface, text_rect)
 
 
@@ -355,7 +358,10 @@ class BombeRLeWorld(object):
         y_base = s.grid_offset[1] + 15
         for i, a in enumerate(self.agents):
             a.render(self.screen, 600, y_base + 50*i - 15)
-            self.render_text(a.name, 650, y_base + 50*i, (200,200,200), vcenter=True)
-            self.render_text(f'{a.score: d}', 830, y_base + 50*i, (255,255,255), vcenter=True, size='big')
-            self.render_text(f'{a.total_score: d}', 880, y_base + 50*i, (100,100,100), vcenter=True, size='big')
-            self.render_text(f'({a.mean_time: .3f})', 930, y_base + 50*i, (100,100,100), vcenter=True, size='small')
+            self.render_text(a.name, 650, y_base + 50*i, (200,200,200), valign='center')
+            self.render_text(f'{a.score:d}', 850, y_base + 50*i, (255,255,255),
+                             valign='center', halign='right', size='big')
+            self.render_text(f'{a.total_score:d}', 900, y_base + 50*i, (100,100,100),
+                             valign='center', halign='right', size='big')
+            self.render_text(f'({a.mean_time:.3f})', 930, y_base + 50*i, (100,100,100),
+                             valign='center', size='small')

@@ -17,5 +17,5 @@ def act(agent):
 def reward_update(agent):
     agent.logger.debug(f'Found reward of {agent.reward}')
 
-def learn(agent):
+def end_of_episode(agent):
     agent.logger.debug(f'Found final reward of {agent.reward}')

@@ -12,11 +12,11 @@ from items import *
 
 class AgentProcess(mp.Process):
 
-    def __init__(self, pipe_to_world, ready_flag, name, filename, train_flag):
+    def __init__(self, pipe_to_world, ready_flag, name, agent_dir, train_flag):
         super(AgentProcess, self).__init__(name=name)
         self.pipe_to_world = pipe_to_world
         self.ready_flag = ready_flag
-        self.filename = filename
+        self.agent_dir = agent_dir
         self.train_flag = train_flag
 
     def run(self):
@@ -25,7 +25,9 @@ class AgentProcess(mp.Process):
         self.wlogger.setLevel(logging.INFO)
         self.logger = logging.getLogger(self.name + '_code')
         self.logger.setLevel(logging.DEBUG)
-        handler = logging.FileHandler(f'logs/{self.name}.log', mode='w')
+        log_dir = f'agent_code/{self.agent_dir}/logs/'
+        if not os.path.exists(log_dir): os.makedirs(log_dir)
+        handler = logging.FileHandler(f'{log_dir}{self.name}.log', mode='w')
         handler.setLevel(logging.DEBUG)
         formatter = logging.Formatter('%(asctime)s [%(name)s] %(levelname)s: %(message)s')
         handler.setFormatter(formatter)
@@ -33,12 +35,16 @@ class AgentProcess(mp.Process):
         self.logger.addHandler(handler)
 
         # Import custom code for the agent
-        self.wlogger.info(f'Import agent code from "agent_code/{self.filename}.py"')
-        self.code = importlib.import_module('agent_code.' + self.filename)
+        self.wlogger.info(f'Import agent code from "agent_code/{self.agent_dir}/callbacks.py"')
+        self.code = importlib.import_module('agent_code.' + self.agent_dir + '.callbacks')
 
         # Initialize custom code
         self.wlogger.info('Initialize agent code')
-        self.code.setup(self)
+        try:
+            self.code.setup(self)
+        except Exception as e:
+            # TODO
+            pass
         self.wlogger.debug('Set flag to indicate readiness')
         self.ready_flag.set()
 
@@ -68,7 +74,11 @@ class AgentProcess(mp.Process):
                     self.reward = self.pipe_to_world.recv()
                     self.wlogger.debug(f'Received global reward {self.reward}')
                     self.wlogger.info('Process intermediate rewards')
-                    self.code.reward_update(self)
+                    try:
+                        self.code.reward_update(self)
+                    except Exception as e:
+                        # TODO
+                        pass
                     self.wlogger.debug('Set flag to indicate readiness')
                     self.ready_flag.set()
 
@@ -98,7 +108,11 @@ class AgentProcess(mp.Process):
                 self.wlogger.debug('Receive final reward')
                 self.reward = self.pipe_to_world.recv()
                 self.wlogger.debug(f'Received final reward {self.reward}')
-                self.code.learn(self)
+                try:
+                    self.code.end_of_episode(self)
+                except Exception as e:
+                    #TODO
+                    pass
 
             self.wlogger.info(f'Round #{self.round} finished')
 
@@ -115,7 +129,11 @@ class Agent(object):
         self.color = color
         self.train_flag = train_flag
 
-        self.avatar = pygame.image.load(f'assets/robot_{self.color}.png')
+        try:
+            self.avatar = pygame.image.load(f'agent_code/{self.process.agent_dir}/avatar.png')
+            assert self.avatar.get_size() == (30,30)
+        except Exception as e:
+            self.avatar = pygame.image.load(f'assets/robot_{self.color}.png')
 
         self.x, self.y = 1, 1
         self.total_score = 0
@@ -123,7 +141,6 @@ class Agent(object):
         self.bomb_timer = 5
         self.explosion_timer = 3
         self.bomb_power = 3
-        self.bombs_left = 1
         self.bomb_type = Bomb
 
         self.reset()
@@ -134,6 +151,7 @@ class Agent(object):
         self.dead = False
         self.score = 0
         self.reward = 0
+        self.bombs_left = 1
 
     def get_state(self):
         # return ((self.x, self.y), self.bomb_timer, self.explosion_timer, self.bomb_power, self.bombs_left, self.name)
@@ -149,24 +167,3 @@ class Agent(object):
 
     def render(self, screen, x, y):
         screen.blit(self.avatar, (x, y))
-
-
-# class UserAgent(Agent):
-
-#     def __init__(self, process, color):
-#         super(UserAgent, self).__init__('UserAgent', process, color)
-#         self.input = None
-
-#     def act(self, global_state):
-#         if self.input in (K_w, K_UP):
-#             return 'UP'
-#         if self.input in (K_s, K_DOWN):
-#             return 'DOWN'
-#         if self.input in (K_a, K_LEFT):
-#             return 'LEFT'
-#         if self.input in (K_d, K_RIGHT):
-#             return 'RIGHT'
-#         if self.input in (K_SPACE, K_RETURN):
-#             return 'BOMB'
-#         if self.input in (K_e, K_KP0):
-#             return 'WAIT'

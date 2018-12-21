@@ -19,9 +19,9 @@ def main():
 
     # Initialize environment and agents
     world = BombeRLeWorld([
-        ('example_agent', True),
-        ('example_agent', False),
-        ('example_agent', False),
+        ('random_agent', True),
+        ('random_agent', False),
+        ('random_agent', False),
         ('user_agent', False)
     ])
 
@@ -47,11 +47,13 @@ def main():
             for event in pygame.event.get():
                 if event.type == QUIT:
                     world.end_round()
+                    world.end()
                     return
                 elif event.type == pygame.locals.KEYDOWN:
                     key_pressed = event.key
                     if key_pressed in (K_q, K_ESCAPE):
                         world.end_round()
+                    if not world.running:
                         round_finished = True
                     # Convert keyboard input into actions
                     if s.input_map.get(key_pressed):
