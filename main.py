@@ -19,10 +19,10 @@ def main():
 
     # Initialize environment and agents
     world = BombeRLeWorld([
-        ('random_agent', True),
-        ('random_agent', False),
-        ('random_agent', False),
-        ('user_agent', False)
+        ('simple_agent', True),
+        ('simple_agent', False),
+        ('simple_agent', False),
+        ('simple_agent', False)
     ])
 
     # Run one or more games

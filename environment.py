@@ -33,6 +33,8 @@ class BombeRLeWorld(object):
             # Initialize screen
             self.screen = pygame.display.set_mode((s.width, s.height))
             pygame.display.set_caption('BombeRLe')
+            icon = pygame.image.load(f'assets/bomb_yellow.png')
+            pygame.display.set_icon(icon)
 
             # Background and tiles
             self.background = pygame.Surface((s.width, s.height))
@@ -139,6 +141,7 @@ class BombeRLeWorld(object):
         state['self'] = agent.get_state()
         state['others'] = [other.get_state() for other in self.active_agents if other is not agent]
         state['bombs'] = [bomb.get_state() for bomb in self.bombs]
+        state['coins'] = [coin.get_state() for coin in self.coins]
         explosion_map = np.zeros(self.arena.shape)
         for e in self.explosions:
             for (x,y) in e.blast_coords:
@@ -151,8 +154,8 @@ class BombeRLeWorld(object):
     def tile_is_free(self, x, y):
         is_free = (self.arena[x,y] == 0)
         if is_free:
-            for bomb in self.bombs:
-                is_free = is_free and (bomb.x != x or bomb.y != y)
+            for obstacle in self.bombs + self.active_agents:
+                is_free = is_free and (obstacle.x != x or obstacle.y != y)
         return is_free
 
 
@@ -249,7 +252,7 @@ class BombeRLeWorld(object):
         self.bombs = [b for b in self.bombs if b.active]
 
         # Explosions
-        agents_hit = []
+        agents_hit = set()
         for explosion in self.explosions:
             explosion.timer -= 1
             if explosion.timer < 0:
@@ -258,7 +261,7 @@ class BombeRLeWorld(object):
             if explosion.timer > 0:
                 for a in self.active_agents:
                     if (not a.dead) and (a.x, a.y) in explosion.blast_coords:
-                        agents_hit.append(a)
+                        agents_hit.add(a)
                         # Note who killed whom, adjust scores
                         if a is explosion.owner:
                             self.logger.info(f'Agent <{a.name}> blown up by own bomb')

@@ -156,7 +156,7 @@ class Agent(object):
 
     def get_state(self):
         # return ((self.x, self.y), self.bomb_timer, self.explosion_timer, self.bomb_power, self.bombs_left, self.name)
-        return (self.x, self.y, self.name)
+        return (self.x, self.y, self.name, self.bombs_left)
 
     def update_score(self, delta):
         self.score += delta

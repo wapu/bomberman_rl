@@ -12,7 +12,7 @@ settings = {
     'fps': 25,
 
     # Main loop
-    'update_interval': 0.5,
+    'update_interval': 0.33,
     'turn_based': False,
 
     # Game properties

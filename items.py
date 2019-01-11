@@ -21,6 +21,9 @@ class Coin(Item):
         self.avatar = pygame.image.load('assets/coin.png')
         self.picked_up = False
 
+    def get_state(self):
+        return (self.x, self.y)
+
 
 class Bomb(Item):
 
