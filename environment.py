@@ -303,12 +303,14 @@ class BombeRLeWorld(object):
                 if aa is not a:
                     aa.events.append(e.OPPONENT_ELIMINATED)
             # Send exit message to end round for this agent
+            self.logger.debug(f'Send exit message to end round for {a.name}')
             a.pipe.send(self.get_state_for_agent(a, died=True))
         self.explosions = [e for e in self.explosions if e.active]
 
         if len(self.active_agents) <= 1:
             self.logger.debug(f'Only {len(self.active_agents)} agent(s) left, wrap up game')
             self.end_round()
+            return
 
         train_agent_left = False
         for a in self.active_agents:
@@ -318,10 +320,12 @@ class BombeRLeWorld(object):
         if not train_agent_left:
             self.logger.debug('No training agent left, wrap up game')
             self.end_round()
+            return
 
         if self.step > 2000:
             self.logger.debug('Aborting long round')
             self.end_round()
+            return
 
 
     def end_round(self):
@@ -355,6 +359,7 @@ class BombeRLeWorld(object):
         else:
             self.logger.warn('End-of-round requested while no round was running')
 
+        self.logger.debug('Setting ready_for_restart_flag')
         self.ready_for_restart_flag.set()
 
     def end(self):
