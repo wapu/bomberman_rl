@@ -2,6 +2,7 @@
 from collections import namedtuple
 import pygame
 from pygame.locals import *
+import logging
 
 
 settings = {
@@ -9,11 +10,12 @@ settings = {
     'width': 1000,
     'height': 600,
     'gui': True,
-    'fps': 25,
+    'fps': 15,
 
     # Main loop
-    'update_interval': 0.33,
+    'update_interval': 0.1, # 0.33,
     'turn_based': False,
+    'n_rounds': 10,
 
     # Game properties
     'cols': 17,
@@ -24,7 +26,7 @@ settings = {
     'coin_drop_rate': 0.1,
 
     # Rules for agents
-    'timeout': 2.0,
+    'timeout': 0.5, # 2.0,
     'reward_kill': 2,
     'reward_coin': 1,
     'reward_last': 3,
@@ -40,6 +42,35 @@ settings = {
         K_SPACE: 'BOMB',
     },
 
+    # Logging levels
+    'log_game': logging.INFO,
+    'log_agent_wrapper': logging.INFO,
+    'log_agent_code': logging.DEBUG,
 }
 settings['grid_offset'] = [(settings['height'] - settings['rows']*settings['grid_size'])//2] * 2
 s = namedtuple("Settings", settings.keys())(*settings.values())
+
+
+events = [
+    'MOVED_LEFT',
+    'MOVED_RIGHT',
+    'MOVED_UP',
+    'MOVED_DOWN',
+    'WAITED',
+    'INTERRUPTED',
+
+    'BOMB_DROPPED',
+    'BOMB_EXPLODED',
+
+    'CRATE_DESTROYED',
+    'COIN_FOUND',
+    'COIN_COLLECTED',
+
+    'KILLED_OPPONENT',
+    'KILLED_SELF',
+
+    'GOT_KILLED',
+    'OPPONENT_ELIMINATED',
+    'GAME_WON',
+]
+e = namedtuple('Events', events)(*range(len(events)))

@@ -1,14 +1,34 @@
 
-from time import time
+from time import time, sleep
 import contextlib
 with contextlib.redirect_stdout(None):
     import pygame
 from pygame.locals import *
 import numpy as np
 import multiprocessing as mp
+import threading
 
 from environment import BombeRLeWorld
 from settings import s
+
+
+# Function to run the game logic in a separate thread
+def game_logic(world, user_inputs):
+    last_update = time()
+    while True:
+        # Game logic
+        if (s.turn_based and len(user_inputs) == 0):
+            sleep(0.1)
+        elif (s.gui and (time()-last_update < s.update_interval)):
+            sleep(s.update_interval - (time() - last_update))
+        else:
+            last_update = time()
+            if world.running:
+                try:
+                    world.do_step(user_inputs.pop(0) if len(user_inputs) else 'WAIT')
+                except Exception as e:
+                    world.end_round()
+                    raise
 
 
 def main():
@@ -20,13 +40,19 @@ def main():
     # Initialize environment and agents
     world = BombeRLeWorld([
         ('simple_agent', True),
-        ('simple_agent', False),
-        ('simple_agent', False),
-        ('simple_agent', False)
+        ('simple_agent', True),
+        ('simple_agent', True),
+        ('simple_agent', True)
     ])
+    user_inputs = []
+
+    # Start game logic thread
+    t = threading.Thread(target=game_logic, args=(world, user_inputs))
+    t.daemon = True
+    t.start()
 
     # Run one or more games
-    for i in range(3):
+    for i in range(s.n_rounds):
         if not world.running:
             world.new_round()
 
@@ -38,7 +64,7 @@ def main():
         round_finished = False
         last_update = time()
         last_frame = time()
-        user_inputs = []
+        user_inputs.clear()
 
         # Main game loop
         while not round_finished:
@@ -49,7 +75,7 @@ def main():
                     world.end_round()
                     world.end()
                     return
-                elif event.type == pygame.locals.KEYDOWN:
+                elif event.type == KEYDOWN:
                     key_pressed = event.key
                     if key_pressed in (K_q, K_ESCAPE):
                         world.end_round()
@@ -58,32 +84,35 @@ def main():
                     # Convert keyboard input into actions
                     if s.input_map.get(key_pressed):
                         if s.turn_based:
-                            user_inputs = [s.input_map.get(key_pressed),]
-                        else:
-                            user_inputs.append(s.input_map.get(key_pressed))
+                            user_inputs.clear()
+                        user_inputs.append(s.input_map.get(key_pressed))
 
-            # Game logic
-            if ((s.turn_based and not key_pressed)
-                    or (s.gui and (time()-last_update < s.update_interval))):
-                pass
-            else:
-                if world.running:
-                    last_update = time()
-                    try:
-                        world.do_step(user_inputs.pop(0) if len(user_inputs) else 'WAIT')
-                    except Exception as e:
-                        world.end_round()
-                        raise
+            # # Game logic
+            # if ((s.turn_based and not key_pressed)
+            #         or (s.gui and (time()-last_update < s.update_interval))):
+            #     pass
+            # else:
+            #     if world.running:
+            #         last_update = time()
+            #         try:
+            #             world.do_step(user_inputs.pop(0) if len(user_inputs) else 'WAIT')
+            #         except Exception as e:
+            #             world.end_round()
+            #             raise
 
             if not world.running and not s.gui:
                 round_finished = True
 
             # Rendering
-            if s.gui and (time()-last_frame >= 1./s.fps):
+            if s.gui and (time()-last_frame >= 1/s.fps):
                 world.render()
                 pygame.display.flip()
+                last_frame = time()
+            else:
+                sleep(1/s.fps - (time() - last_frame))
 
     world.end()
+
 
 if __name__ == '__main__':
     main()
