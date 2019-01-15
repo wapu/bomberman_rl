@@ -74,6 +74,7 @@ class AgentProcess(mp.Process):
                 self.wlogger.debug('Receive game state')
                 self.game_state = self.pipe_to_world.recv()
                 if self.game_state['died']:
+                    self.ready_flag.set()
                     self.wlogger.info('Received exit message for round')
                     break
                 self.wlogger.info(f'STARTING STEP {self.game_state["step"]}')
@@ -123,6 +124,7 @@ class AgentProcess(mp.Process):
                     self.code.end_of_episode(self)
                 except Exception as e:
                     self.wlogger.exception(f'Error in callback function: {e}')
+                self.ready_flag.set()
 
             self.wlogger.info(f'Round #{self.round} finished')
 

@@ -61,6 +61,7 @@ class BombeRLeWorld(object):
         # Get the game going
         self.round = 0
         self.running = False
+        self.ready_for_restart_flag = mp.Event()
         self.new_round()
 
 
@@ -74,7 +75,6 @@ class BombeRLeWorld(object):
         pygame.display.set_caption(f'BombeRLe | Round #{self.round}')
 
         # Bookkeeping
-        self.running = True
         self.step = 0
         self.active_agents = []
         self.coins = []
@@ -106,6 +106,8 @@ class BombeRLeWorld(object):
             agent.pipe.send(self.round)
             self.active_agents.append(agent)
             agent.x, agent.y = self.start_positions.pop()
+
+        self.running = True
 
 
     def add_agent(self, agent_dir, train=False):
@@ -302,7 +304,6 @@ class BombeRLeWorld(object):
                     aa.events.append(e.OPPONENT_ELIMINATED)
             # Send exit message to end round for this agent
             a.pipe.send(self.get_state_for_agent(a, died=True))
-            a.events = []
         self.explosions = [e for e in self.explosions if e.active]
 
         if len(self.active_agents) <= 1:
@@ -334,19 +335,23 @@ class BombeRLeWorld(object):
                 # Send exit message to end round for this agent
                 self.logger.debug(f'Sending exit message to agent <{a.name}>')
                 a.pipe.send(self.get_state_for_agent(a, died=True))
-                a.events = []
+                a.ready_flag.wait()
+                a.ready_flag.clear()
             for a in self.agents:
                 # Send final reward to agent if it expects one
                 if a.train_flag.is_set():
                     self.logger.debug(f'Sending final reward {a.reward} to agent <{a.name}>')
                     a.pipe.send(a.reward)
+                    a.ready_flag.wait()
+                    a.ready_flag.clear()
             # Penalty for agent who spent most time thinking
             slowest = max(self.agents, key=lambda a: a.mean_time)
             self.logger.info(f'Agent <{slowest.name}> loses 1 point for being slowest (avg. {slowest.mean_time:.3f}s)')
             slowest.update_score(s.reward_slow)
-
         else:
             self.logger.warn('End-of-round requested while no round was running')
+
+        self.ready_for_restart_flag.set()
 
     def end(self):
         self.logger.info('SHUT DOWN')

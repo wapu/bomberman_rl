@@ -56,6 +56,8 @@ def main():
     # Run one or more games
     for i in range(s.n_rounds):
         if not world.running:
+            world.ready_for_restart_flag.wait()
+            world.ready_for_restart_flag.clear()
             world.new_round()
 
         # First render
