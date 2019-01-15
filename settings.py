@@ -58,7 +58,7 @@ events = [
     'MOVED_DOWN',
     'WAITED',
     'INTERRUPTED',
-    'INVALID_ACTION'
+    'INVALID_ACTION',
 
     'BOMB_DROPPED',
     'BOMB_EXPLODED',
