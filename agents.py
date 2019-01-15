@@ -1,5 +1,5 @@
 
-from time import time
+from time import time, sleep
 import os, signal
 import multiprocessing as mp
 import importlib
@@ -8,6 +8,17 @@ import logging
 from pygame.locals import *
 
 from items import *
+from settings import s, e
+
+
+# Context manager to protect code from badly timed Interrupts
+class IgnoreKeyboardInterrupt(object):
+    def __enter__(self):
+        self.old_handler = signal.signal(signal.SIGINT, self.handler)
+    def handler(self, sig, frame):
+        pass
+    def __exit__(self, type, value, traceback):
+        signal.signal(signal.SIGINT, self.old_handler)
 
 
 class AgentProcess(mp.Process):
@@ -22,9 +33,9 @@ class AgentProcess(mp.Process):
     def run(self):
         # Set up logging
         self.wlogger = logging.getLogger(self.name + '_wrapper')
-        self.wlogger.setLevel(logging.INFO)
+        self.wlogger.setLevel(s.log_agent_wrapper)
         self.logger = logging.getLogger(self.name + '_code')
-        self.logger.setLevel(logging.DEBUG)
+        self.logger.setLevel(s.log_agent_code)
         log_dir = f'agent_code/{self.agent_dir}/logs/'
         if not os.path.exists(log_dir): os.makedirs(log_dir)
         handler = logging.FileHandler(f'{log_dir}{self.name}.log', mode='w')
@@ -90,12 +101,15 @@ class AgentProcess(mp.Process):
                     self.wlogger.warn(f'Got interrupted by timeout')
                 except Exception as e:
                     self.wlogger.exception(f'Error in callback function: {e}')
-                finally:
-                    # Send action and time taken back to main process
+
+                # Send action and time taken back to main process
+                with IgnoreKeyboardInterrupt():
                     t = time() - t
                     self.wlogger.info(f'Chose action {self.next_action} after {t:.3f}s of thinking')
                     self.wlogger.debug('Send action and time to main process')
                     self.pipe_to_world.send((self.next_action, t))
+                    while self.ready_flag.is_set():
+                        sleep(0.01)
                     self.wlogger.debug('Set flag to indicate readiness')
                     self.ready_flag.set()
 
@@ -153,6 +167,7 @@ class Agent(object):
         self.dead = False
         self.score = 0
         self.reward = 0
+        self.events = []
         self.bombs_left = 1
 
     def get_state(self):

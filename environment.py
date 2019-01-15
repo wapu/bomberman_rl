@@ -10,7 +10,7 @@ import logging
 
 from agents import *
 from items import *
-from settings import s
+from settings import s, e
 
 
 class BombeRLeWorld(object):
@@ -18,7 +18,7 @@ class BombeRLeWorld(object):
     def __init__(self, agents):
         # Set up logging
         self.logger = logging.getLogger('BombeRLeWorld')
-        self.logger.setLevel(logging.INFO)
+        self.logger.setLevel(s.log_game)
         handler = logging.FileHandler('logs/game.log', mode='w')
         handler.setLevel(logging.DEBUG)
         formatter = logging.Formatter('%(asctime)s [%(name)s] %(levelname)s: %(message)s')
@@ -47,7 +47,7 @@ class BombeRLeWorld(object):
             # font_name = pygame.font.match_font('roboto')
             font_name = 'assets/emulogic.ttf'
             self.fonts = {
-                'huge': pygame.font.Font(font_name, 28),
+                'huge': pygame.font.Font(font_name, 20),
                 'big': pygame.font.Font(font_name, 16),
                 'medium': pygame.font.Font(font_name, 10),
                 'small': pygame.font.Font(font_name, 8),
@@ -195,12 +195,14 @@ class BombeRLeWorld(object):
             if not a.ready_flag.wait(deadline - time()):
                 self.logger.warn(f'Interrupting agent <{a.name}>')
                 if os.name == 'posix':
-                    pass
-                    # os.kill(a.process.pid, signal.SIGINT)
+                    if not a.ready_flag.is_set():
+                        os.kill(a.process.pid, signal.SIGINT)
                 else:
                     pass
                     # Special case for Windows
-                    # os.kill(a.process.pid, signal.CTRL_C_EVENT)
+                    if not a.ready_flag.is_set():
+                        os.kill(a.process.pid, signal.CTRL_C_EVENT)
+                a.events.append(e.INTERRUPTED)
 
         # Perform decided agent actions
         for a in self.active_agents:
@@ -209,23 +211,27 @@ class BombeRLeWorld(object):
             self.logger.info(f'Agent <{a.name}> chose action {action} in {t:.2f}s.')
             a.times.append(t)
             a.mean_time = np.mean(a.times)
-            if action == 'UP'    and self.tile_is_free(a.x, a.y - 1):
+            if action == 'UP' and self.tile_is_free(a.x, a.y - 1):
                 a.y -= 1
-            elif action == 'DOWN'  and self.tile_is_free(a.x, a.y + 1):
+                a.events.append(e.MOVED_UP)
+            elif action == 'DOWN' and self.tile_is_free(a.x, a.y + 1):
                 a.y += 1
-            elif action == 'LEFT'  and self.tile_is_free(a.x - 1, a.y):
+                a.events.append(e.MOVED_DOWN)
+            elif action == 'LEFT' and self.tile_is_free(a.x - 1, a.y):
                 a.x -= 1
+                a.events.append(e.MOVED_LEFT)
             elif action == 'RIGHT' and self.tile_is_free(a.x + 1, a.y):
                 a.x += 1
+                a.events.append(e.MOVED_RIGHT)
             elif action == 'BOMB' and a.bombs_left > 0:
                 self.logger.info(f'Agent <{a.name}> drops bomb at {(a.x, a.y)}')
                 self.bombs.append(a.make_bomb())
                 a.bombs_left -= 1
-                a.events.append('PLACED_BOMB')
+                a.events.append(e.BOMB_DROPPED)
             elif action == 'WAIT':
-                a.events.append('WAIT')
+                a.events.append(e.WAITED)
             else:
-                a.events.append('INVALID_ACTION')
+                a.events.append(e.INVALID_ACTION)
 
         # Reset agent flags
         for a in self.active_agents:
@@ -239,7 +245,7 @@ class BombeRLeWorld(object):
                     coin.picked_up = True
                     self.logger.info(f'Agent <{a.name}> picked up coin at {(a.x, a.y)} and receives 1 point')
                     a.update_score(s.reward_coin)
-                    a.events.append('PICKED_UP_COIN')
+                    a.events.append(e.COIN_COLLECTED)
         self.coins = [c for c in self.coins if not c.picked_up]
 
         # Bombs
@@ -248,16 +254,18 @@ class BombeRLeWorld(object):
             # Explode when timer is finished
             if bomb.timer < 0:
                 self.logger.info(f'Agent <{bomb.owner.name}>\'s bomb at {(bomb.x, bomb.y)} explodes')
+                bomb.owner.events.append(e.BOMB_EXPLODED)
                 blast_coords = bomb.get_blast_coords(self.arena)
                 # Clear crates
                 for (x,y) in blast_coords:
                     if self.arena[x,y] == 1:
                         self.arena[x,y] = 0
-                        bomb.owner.events.append('DESTROYED_WALL')
+                        bomb.owner.events.append(e.CRATE_DESTROYED)
                         # Maybe spawn a coin
                         if np.random.rand() < s.coin_drop_rate:
                             self.logger.info(f'Coin dropped at {(x,y)}')
                             self.coins.append(Coin((x,y)))
+                            bomb.owner.events.append(e.COIN_FOUND)
                 # Create explosion
                 screen_coords = [(s.grid_offset[0] + s.grid_size*x, s.grid_offset[1] + s.grid_size*y) for (x,y) in blast_coords]
                 self.explosions.append(Explosion(blast_coords, screen_coords, bomb.owner))
@@ -279,16 +287,19 @@ class BombeRLeWorld(object):
                         # Note who killed whom, adjust scores
                         if a is explosion.owner:
                             self.logger.info(f'Agent <{a.name}> blown up by own bomb')
-                            a.events.append('KILLED_BY_OWN_BOMB')
+                            a.events.append(e.KILLED_SELF)
                         else:
                             self.logger.info(f'Agent <{a.name}> blown up by agent <{explosion.owner.name}>\'s bomb')
                             self.logger.info(f'Agent <{explosion.owner.name}> receives 1 point')
                             explosion.owner.update_score(s.reward_kill)
-                            a.events.append('KILLED_ENEMY')
+                            explosion.owner.events.append(e.KILLED_OPPONENT)
         for a in agents_hit:
             a.dead = True
             self.active_agents.remove(a)
-            a.events.append('DIED')
+            a.events.append(e.GOT_KILLED)
+            for aa in self.active_agents:
+                if aa is not a:
+                    aa.events.append(e.OPPONENT_ELIMINATED)
             # Send exit message to end round for this agent
             a.pipe.send(self.get_state_for_agent(a, died=True))
             a.events = []
@@ -310,11 +321,16 @@ class BombeRLeWorld(object):
 
     def end_round(self):
         if self.running:
+            self.running = False
+            # Wait in case there is still a game step running
+            sleep(s.update_interval)
+
             self.logger.info(f'WRAPPING UP ROUND #{self.round}')
             for a in self.active_agents:
                 # Reward survivor(s)
                 self.logger.info(f'Agent <{a.name}> receives 1 point for surviving')
                 a.update_score(s.reward_last)
+                a.events.append(e.GAME_WON)
                 # Send exit message to end round for this agent
                 self.logger.debug(f'Sending exit message to agent <{a.name}>')
                 a.pipe.send(self.get_state_for_agent(a, died=True))
@@ -328,8 +344,6 @@ class BombeRLeWorld(object):
             slowest = max(self.agents, key=lambda a: a.mean_time)
             self.logger.info(f'Agent <{slowest.name}> loses 1 point for being slowest (avg. {slowest.mean_time:.3f}s)')
             slowest.update_score(s.reward_slow)
-
-            self.running = False
 
         else:
             self.logger.warn('End-of-round requested while no round was running')
@@ -361,28 +375,26 @@ class BombeRLeWorld(object):
         self.screen.blit(self.background, (0,0))
 
         # World
-        self.logger.debug(f'RENDERING game world')
         for x in range(self.arena.shape[1]):
             for y in range(self.arena.shape[0]):
                 if self.arena[x,y] == -1:
                     self.screen.blit(self.t_wall, (s.grid_offset[0] + s.grid_size*x, s.grid_offset[1] + s.grid_size*y))
                 if self.arena[x,y] == 1:
                     self.screen.blit(self.t_crate, (s.grid_offset[0] + s.grid_size*x, s.grid_offset[1] + s.grid_size*y))
+        self.render_text(f'Step {self.step:d}', s.grid_offset[0], s.height - s.grid_offset[1]/2, (64,64,64),
+                         valign='center', halign='left', size='medium')
 
         # Items
-        self.logger.debug(f'RENDERING items')
         for bomb in self.bombs:
             bomb.render(self.screen, s.grid_offset[0] + s.grid_size*bomb.x, s.grid_offset[1] + s.grid_size*bomb.y)
         for coin in self.coins:
             coin.render(self.screen, s.grid_offset[0] + s.grid_size*coin.x, s.grid_offset[1] + s.grid_size*coin.y)
 
         # Agents
-        self.logger.debug(f'RENDERING agents')
         for agent in self.active_agents:
             agent.render(self.screen, s.grid_offset[0] + s.grid_size*agent.x, s.grid_offset[1] + s.grid_size*agent.y)
 
         # Explosions
-        self.logger.debug(f'RENDERING explosions')
         for explosion in self.explosions:
             explosion.render(self.screen)
 
@@ -390,16 +402,33 @@ class BombeRLeWorld(object):
         self.agents.sort(key=lambda a: (a.score, -a.mean_time), reverse=True)
         y_base = s.grid_offset[1] + 15
         for i, a in enumerate(self.agents):
-            a.render(self.screen, 600, y_base + 50*i - 15)
-            if not a.dead:
-                self.render_text(a.name, 650, y_base + 50*i, (255,255,255),
-                                 valign='center', size='small')
-            else:
-                self.render_text(a.name, 650, y_base + 50*i, (64,64,64),
-                                 valign='center', size='small')
+            bounce = 0 if (i>0 or self.running) else np.abs(10*np.sin(5*time()))
+            a.render(self.screen, 600, y_base + 50*i - 15 - bounce)
+            self.render_text(a.name, 650, y_base + 50*i,
+                             (64,64,64) if a.dead else (255,255,255),
+                             valign='center', size='small')
             self.render_text(f'{a.score:d}', 830, y_base + 50*i, (255,255,255),
                              valign='center', halign='right', size='big')
             self.render_text(f'{a.total_score:d}', 890, y_base + 50*i, (64,64,64),
                              valign='center', halign='right', size='big')
             self.render_text(f'({a.mean_time:.3f})', 930, y_base + 50*i, (128,128,128),
                              valign='center', size='small')
+
+        # End of round info
+        if not self.running:
+            w = self.agents[0]
+            x_center = (s.width - s.grid_offset[0] - s.cols * s.grid_size) / 2 + s.grid_offset[0] + s.cols * s.grid_size
+            color = np.int_((255*(np.sin(3*time())/3 + .66),
+                             255*(np.sin(4*time()+np.pi/3)/3 + .66),
+                             255*(np.sin(5*time()-np.pi/3)/3 + .66)))
+            self.render_text(w.name, x_center, 320, color,
+                             valign='top', halign='center', size='huge')
+            self.render_text('has won the round!', x_center, 350, color,
+                             valign='top', halign='center', size='big')
+            w_total = max(self.agents, key=lambda a: (a.total_score, -a.mean_time))
+            if w_total is w:
+                self.render_text(f'{w_total.name} is also in the lead.', x_center, 390, (128,128,128),
+                                 valign='top', halign='center', size='medium')
+            else:
+                self.render_text(f'But {w_total.name} is in the lead.', x_center, 390, (128,128,128),
+                                 valign='top', halign='center', size='medium')

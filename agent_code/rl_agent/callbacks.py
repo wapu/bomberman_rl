@@ -3,7 +3,7 @@ import os.path
 
 import numpy as np
 import torch
-from settings import s
+from settings import s, e
 from torch.nn import functional
 from torch.optim import Adam
 
@@ -167,21 +167,21 @@ def end_of_episode(agent):
 def compute_reward(agent):
     reward = -1
     for event in agent.game_state['events']:
-        if event == 'PLACED_BOMB':
+        if event == e.BOMB_DROPPED:
             reward += 0
-        elif event == 'PICKED_UP_COIN':
+        elif event == e.COIN_COLLECTED:
             reward += 100
-        elif event == 'DESTROYED_WALL':
+        elif event == e.CRATE_DESTROYED:
             reward += 30
-        elif event == 'KILLED_BY_OWN_BOMB':
+        elif event == e.KILLED_SELF:
             reward -= 0
-        elif event == 'KILLED_ENEMY':
+        elif event == e.KILLED_OPPONENT:
             reward += 100
-        elif event == 'DIED':
+        elif event == e.GOT_KILLED:
             reward -= 300
-        elif event == 'WAIT':
+        elif event == e.WAITED:
             reward -= 2
-        elif event == 'INVALID_ACTION':
+        elif event == e.INVALID_ACTION:
             reward -= 2
 
     agent.logger.info(f'Found reward of {reward}')
