@@ -10,6 +10,8 @@ from torch.optim import Adam
 from agent_code.rl_agent.model import DQN
 from agent_code.rl_agent.schedule import LinearSchedule
 
+from agent_code.simple_agent import callbacks
+
 
 def setup(agent):
     agent.logger.debug('Successfully entered setup code')
@@ -21,15 +23,17 @@ def setup(agent):
     agent.batch_size = 32
     agent.num_param_updates = 0
     agent.target_update_freq = 2500
-    agent.gamma = .93
+    agent.gamma = .95
     agent.learning_start_step = 50000
     agent.learning_interval = 8
     agent.save_interval = 100000
     import_file = './models/xxx.pth'
-    lr = 0.001
+    lr = 0.0001
 
     agent.last_state = None
     agent.last_action = None
+
+    callbacks.setup(agent)
 
     if os.path.isfile(import_file):
         data = torch.load(import_file)
@@ -69,8 +73,13 @@ def act(agent):
         for coin in agent.game_state['coins']:
             state[0, 5, coin[0], coin[1]] = 1
 
-        action = select_action(state, agent)
-        agent.next_action = ['RIGHT', 'LEFT', 'UP', 'DOWN', 'BOMB', 'WAIT'][action[0]]
+        if agent.step < 150000:
+            callbacks.act(agent)
+            action = torch.zeros(1)
+            action[0] = ['RIGHT', 'LEFT', 'UP', 'DOWN', 'BOMB', 'WAIT'].index(agent.next_action)
+        else:
+            action = select_action(state, agent)
+            agent.next_action = ['RIGHT', 'LEFT', 'UP', 'DOWN', 'BOMB', 'WAIT'][action[0]]
 
         reward = compute_reward(agent)
 
