@@ -112,6 +112,8 @@ def main():
                 last_frame = time()
             else:
                 sleep(1/s.fps - (time() - last_frame))
+                if not s.gui:
+                    last_frame = time()
 
     world.end()
 
