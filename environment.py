@@ -319,6 +319,10 @@ class BombeRLeWorld(object):
             self.logger.debug('No training agent left, wrap up game')
             self.end_round()
 
+        if self.step > 2000:
+            self.logger.debug('Aborting long round')
+            self.end_round()
+
 
     def end_round(self):
         if self.running:
