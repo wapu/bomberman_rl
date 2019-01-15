@@ -8,7 +8,7 @@ settings = {
     # Display
     'width': 1000,
     'height': 600,
-    'gui': True,
+    'gui': False,
     'fps': 25,
 
     # Main loop
@@ -24,7 +24,7 @@ settings = {
     'coin_drop_rate': 0.1,
 
     # Rules for agents
-    'timeout': 2.0,
+    'timeout': 5.0,
     'reward_kill': 2,
     'reward_coin': 1,
     'reward_last': 3,

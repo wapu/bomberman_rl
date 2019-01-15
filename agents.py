@@ -62,7 +62,7 @@ class AgentProcess(mp.Process):
                 # Receive new world state and check for exit message
                 self.wlogger.debug('Receive game state')
                 self.game_state = self.pipe_to_world.recv()
-                if self.game_state is None:
+                if self.game_state['died']:
                     self.wlogger.info('Received exit message for round')
                     break
                 self.wlogger.info(f'STARTING STEP {self.game_state["step"]}')
@@ -124,6 +124,7 @@ class Agent(object):
         self.ready_flag = ready_flag
         self.color = color
         self.train_flag = train_flag
+        self.events = []
 
         # Load custom avatar or robot avatar of assigned color
         try:

@@ -1,11 +1,10 @@
 
-from time import time
 import contextlib
+from time import time
+
 with contextlib.redirect_stdout(None):
     import pygame
 from pygame.locals import *
-import numpy as np
-import multiprocessing as mp
 
 from environment import BombeRLeWorld
 from settings import s
@@ -19,14 +18,14 @@ def main():
 
     # Initialize environment and agents
     world = BombeRLeWorld([
-        ('simple_agent', True),
+        ('rl_agent', True),
         ('simple_agent', False),
         ('simple_agent', False),
         ('simple_agent', False)
     ])
 
     # Run one or more games
-    for i in range(3):
+    for i in range(1000000):
         if not world.running:
             world.new_round()
 
@@ -84,6 +83,7 @@ def main():
                 pygame.display.flip()
 
     world.end()
+
 
 if __name__ == '__main__':
     main()

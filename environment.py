@@ -134,7 +134,7 @@ class BombeRLeWorld(object):
             self.logger.debug(f'Setup finished for agent <{agent.name}>')
 
 
-    def get_state_for_agent(self, agent):
+    def get_state_for_agent(self, agent, died=False):
         state = {}
         state['step'] = self.step
         state['arena'] = np.array(self.arena)
@@ -148,6 +148,10 @@ class BombeRLeWorld(object):
                 explosion_map[x,y] = max(explosion_map[x,y], e.timer)
         state['explosions'] = explosion_map
         state['user_input'] = self.user_input
+        state['coins'] = [(c.x, c.y) for c in self.coins if not c.picked_up]
+        state['events'] = agent.events
+        state['bombs_left'] = agent.bombs_left
+        state['died'] = died
         return state
 
 
@@ -170,6 +174,7 @@ class BombeRLeWorld(object):
         for a in self.active_agents:
             self.logger.debug(f'Sending game state to agent <{a.name}>')
             a.pipe.send(self.get_state_for_agent(a))
+            a.events = []
 
         # Send reward to all agents that expect it, then reset it and wait for them
         for a in self.active_agents:
@@ -190,10 +195,12 @@ class BombeRLeWorld(object):
             if not a.ready_flag.wait(deadline - time()):
                 self.logger.warn(f'Interrupting agent <{a.name}>')
                 if os.name == 'posix':
-                    os.kill(a.process.pid, signal.SIGINT)
+                    pass
+                    # os.kill(a.process.pid, signal.SIGINT)
                 else:
+                    pass
                     # Special case for Windows
-                    os.kill(a.process.pid, signal.CTRL_C_EVENT)
+                    # os.kill(a.process.pid, signal.CTRL_C_EVENT)
 
         # Perform decided agent actions
         for a in self.active_agents:
@@ -204,16 +211,21 @@ class BombeRLeWorld(object):
             a.mean_time = np.mean(a.times)
             if action == 'UP'    and self.tile_is_free(a.x, a.y - 1):
                 a.y -= 1
-            if action == 'DOWN'  and self.tile_is_free(a.x, a.y + 1):
+            elif action == 'DOWN'  and self.tile_is_free(a.x, a.y + 1):
                 a.y += 1
-            if action == 'LEFT'  and self.tile_is_free(a.x - 1, a.y):
+            elif action == 'LEFT'  and self.tile_is_free(a.x - 1, a.y):
                 a.x -= 1
-            if action == 'RIGHT' and self.tile_is_free(a.x + 1, a.y):
+            elif action == 'RIGHT' and self.tile_is_free(a.x + 1, a.y):
                 a.x += 1
-            if action == 'BOMB' and a.bombs_left > 0:
+            elif action == 'BOMB' and a.bombs_left > 0:
                 self.logger.info(f'Agent <{a.name}> drops bomb at {(a.x, a.y)}')
                 self.bombs.append(a.make_bomb())
                 a.bombs_left -= 1
+                a.events.append('PLACED_BOMB')
+            elif action == 'WAIT':
+                a.events.append('WAIT')
+            else:
+                a.events.append('INVALID_ACTION')
 
         # Reset agent flags
         for a in self.active_agents:
@@ -227,6 +239,7 @@ class BombeRLeWorld(object):
                     coin.picked_up = True
                     self.logger.info(f'Agent <{a.name}> picked up coin at {(a.x, a.y)} and receives 1 point')
                     a.update_score(s.reward_coin)
+                    a.events.append('PICKED_UP_COIN')
         self.coins = [c for c in self.coins if not c.picked_up]
 
         # Bombs
@@ -240,6 +253,7 @@ class BombeRLeWorld(object):
                 for (x,y) in blast_coords:
                     if self.arena[x,y] == 1:
                         self.arena[x,y] = 0
+                        bomb.owner.events.append('DESTROYED_WALL')
                         # Maybe spawn a coin
                         if np.random.rand() < s.coin_drop_rate:
                             self.logger.info(f'Coin dropped at {(x,y)}')
@@ -265,19 +279,32 @@ class BombeRLeWorld(object):
                         # Note who killed whom, adjust scores
                         if a is explosion.owner:
                             self.logger.info(f'Agent <{a.name}> blown up by own bomb')
+                            a.events.append('KILLED_BY_OWN_BOMB')
                         else:
                             self.logger.info(f'Agent <{a.name}> blown up by agent <{explosion.owner.name}>\'s bomb')
                             self.logger.info(f'Agent <{explosion.owner.name}> receives 1 point')
                             explosion.owner.update_score(s.reward_kill)
+                            a.events.append('KILLED_ENEMY')
         for a in agents_hit:
             a.dead = True
             self.active_agents.remove(a)
+            a.events.append('DIED')
             # Send exit message to end round for this agent
-            a.pipe.send(None)
+            a.pipe.send(self.get_state_for_agent(a, died=True))
+            a.events = []
         self.explosions = [e for e in self.explosions if e.active]
 
         if len(self.active_agents) <= 1:
             self.logger.debug(f'Only {len(self.active_agents)} agent(s) left, wrap up game')
+            self.end_round()
+
+        train_agent_left = False
+        for a in self.active_agents:
+            if a.train_flag.is_set():
+                train_agent_left = True
+
+        if not train_agent_left:
+            self.logger.debug('No training agent left, wrap up game')
             self.end_round()
 
 
@@ -290,7 +317,8 @@ class BombeRLeWorld(object):
                 a.update_score(s.reward_last)
                 # Send exit message to end round for this agent
                 self.logger.debug(f'Sending exit message to agent <{a.name}>')
-                a.pipe.send(None)
+                a.pipe.send(self.get_state_for_agent(a, died=True))
+                a.events = []
             for a in self.agents:
                 # Send final reward to agent if it expects one
                 if a.train_flag.is_set():
