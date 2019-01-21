@@ -113,7 +113,9 @@ def main():
                 pygame.display.flip()
                 last_frame = time()
             else:
-                sleep(1/s.fps - (time() - last_frame))
+                sleep_time = 1/s.fps - (time() - last_frame)
+                if sleep_time > 0:
+                    sleep(sleep_time)
                 if not s.gui:
                     last_frame = time()
 
