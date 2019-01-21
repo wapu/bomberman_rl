@@ -148,8 +148,8 @@ def act(agent):
 
 
 def reward_update(agent):
-    agent.logger.debug(f'Found reward of {agent.reward}')
+    agent.logger.debug(f'Encountered {len(agent.events)} game events.')
 
 
 def end_of_episode(agent):
-    agent.logger.debug(f'Found final reward of {agent.reward}')
+    agent.logger.debug(f'Encountered {len(agent.events)} game events in final step.')

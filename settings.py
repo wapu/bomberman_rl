@@ -24,6 +24,7 @@ settings = {
     'actions': ['UP', 'DOWN', 'LEFT', 'RIGHT', 'BOMB', 'WAIT'],
     'max_agents': 4,
     'coin_drop_rate': 0.1,
+    'max_steps': 300,
 
     # Rules for agents
     'timeout': 5.0,

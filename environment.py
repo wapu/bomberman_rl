@@ -151,8 +151,7 @@ class BombeRLeWorld(object):
         state['explosions'] = explosion_map
         state['user_input'] = self.user_input
         state['coins'] = [(c.x, c.y) for c in self.coins if not c.picked_up]
-        state['events'] = agent.events
-        state['bombs_left'] = agent.bombs_left
+        # state['bombs_left'] = agent.bombs_left # this is contained in agent.get_state()
         state['died'] = died
         return state
 
@@ -176,17 +175,16 @@ class BombeRLeWorld(object):
         for a in self.active_agents:
             self.logger.debug(f'Sending game state to agent <{a.name}>')
             a.pipe.send(self.get_state_for_agent(a))
-            a.events = []
 
-        # Send reward to all agents that expect it, then reset it and wait for them
+        # Send events to all agents that expect them, then reset and wait for them
         for a in self.active_agents:
             if a.train_flag.is_set():
-                self.logger.debug(f'Sending reward {a.reward} to agent <{a.name}>')
-                a.pipe.send(a.reward)
-            a.reward = 0
+                self.logger.debug(f'Sending event queue {a.events} to agent <{a.name}>')
+                a.pipe.send(a.events)
+            a.events = []
         for a in self.active_agents:
             if a.train_flag.is_set():
-                self.logger.debug(f'Waiting for agent <{a.name}> to process rewards')
+                self.logger.debug(f'Waiting for agent <{a.name}> to process events')
                 a.ready_flag.wait()
                 self.logger.debug(f'Clearing flag for agent <{a.name}>')
                 a.ready_flag.clear()
@@ -322,7 +320,7 @@ class BombeRLeWorld(object):
             self.end_round()
             return
 
-        if self.step > 2000:
+        if self.step >= s.max_steps:
             self.logger.debug('Aborting long round')
             self.end_round()
             return
@@ -346,10 +344,11 @@ class BombeRLeWorld(object):
                 a.ready_flag.wait()
                 a.ready_flag.clear()
             for a in self.agents:
-                # Send final reward to agent if it expects one
+                # Send final event queue to agent if it expects one
                 if a.train_flag.is_set():
-                    self.logger.debug(f'Sending final reward {a.reward} to agent <{a.name}>')
-                    a.pipe.send(a.reward)
+                    self.logger.debug(f'Sending final event queue {a.events} to agent <{a.name}>')
+                    a.pipe.send(a.events)
+                    a.events = []
                     a.ready_flag.wait()
                     a.ready_flag.clear()
             # Penalty for agent who spent most time thinking

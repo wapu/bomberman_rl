@@ -79,11 +79,11 @@ class AgentProcess(mp.Process):
                     break
                 self.wlogger.info(f'STARTING STEP {self.game_state["step"]}')
 
-                # Process intermediate rewards if in training mode
+                # Process game events for rewards if in training mode
                 if self.train_flag.is_set():
-                    self.wlogger.debug('Receive global reward')
-                    self.reward = self.pipe_to_world.recv()
-                    self.wlogger.debug(f'Received global reward {self.reward}')
+                    self.wlogger.debug('Receive event queue')
+                    self.events = self.pipe_to_world.recv()
+                    self.wlogger.debug(f'Received event queue {self.events}')
                     self.wlogger.info('Process intermediate rewards')
                     try:
                         self.code.reward_update(self)
@@ -117,9 +117,9 @@ class AgentProcess(mp.Process):
             # Learn from episode if in training mode
             if self.train_flag.is_set():
                 self.wlogger.info('Finalize agent\'s training')
-                self.wlogger.debug('Receive final reward')
-                self.reward = self.pipe_to_world.recv()
-                self.wlogger.debug(f'Received final reward {self.reward}')
+                self.wlogger.debug('Receive final event queue')
+                self.events = self.pipe_to_world.recv()
+                self.wlogger.debug(f'Received final event queue {self.events}')
                 try:
                     self.code.end_of_episode(self)
                 except Exception as e:
@@ -168,7 +168,6 @@ class Agent(object):
         self.mean_time = 0
         self.dead = False
         self.score = 0
-        self.reward = 0
         self.events = []
         self.bombs_left = 1
 
@@ -179,7 +178,6 @@ class Agent(object):
     def update_score(self, delta):
         self.score += delta
         self.total_score += delta
-        self.reward += delta
 
     def make_bomb(self):
         return self.bomb_type((self.x, self.y), self, self.bomb_timer, self.bomb_power, self.color)
