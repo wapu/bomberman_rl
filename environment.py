@@ -4,6 +4,7 @@ import multiprocessing as mp
 import numpy as np
 import random
 import pygame
+import pickle
 from pygame.locals import *
 
 import logging
@@ -15,7 +16,7 @@ from settings import s, e
 
 class BombeRLeWorld(object):
 
-    def __init__(self, agents):
+    def __init__(self, agents, save_replay=False):
         # Set up logging
         self.logger = logging.getLogger('BombeRLeWorld')
         self.logger.setLevel(s.log_game)
@@ -61,6 +62,7 @@ class BombeRLeWorld(object):
         # Get the game going
         self.round = 0
         self.running = False
+        self.save_replay = save_replay
         self.ready_for_restart_flag = mp.Event()
         self.new_round()
 
@@ -77,11 +79,11 @@ class BombeRLeWorld(object):
         # Bookkeeping
         self.step = 0
         self.active_agents = []
-        self.coins = []
         self.bombs = []
         self.explosions = []
+        self.round_id = f'BombeRLe_replay_{time()}'
 
-        # Arena with wall layout
+        # Arena with wall and crate layout
         self.arena = (np.random.rand(s.cols, s.rows) > 0.25).astype(int)
         self.arena[:1, :] = -1
         self.arena[-1:,:] = -1
@@ -91,6 +93,17 @@ class BombeRLeWorld(object):
             for y in range(s.rows):
                 if (x+1)*(y+1) % 2 == 1:
                     self.arena[x,y] = -1
+        # Distribute coins evenly
+        self.coins = []
+        for i in range(3):
+            for j in range(3):
+                while True:
+                    x, y = np.random.randint(1+5*i,6+5*i), np.random.randint(1+5*j,6+5*j)
+                    if self.arena[x,y] == 1:
+                        self.coins.append(Coin((x,y)))
+                        # self.coins[-1].collectable=True
+                        # self.arena[x,y] = 0
+                        break
 
         # Starting positions
         self.start_positions = [(1,1), (1,s.rows-2), (s.cols-2,1), (s.cols-2,s.rows-2)]
@@ -106,6 +119,13 @@ class BombeRLeWorld(object):
             agent.pipe.send(self.round)
             self.active_agents.append(agent)
             agent.x, agent.y = self.start_positions.pop()
+
+        self.replay = {
+                'arena': self.arena,
+                'coins': [c.get_state() for c in self.coins],
+                'agents': [a.get_state() for a in self.agents],
+                'actions': dict([(a.name, []) for a in self.agents]),
+            }
 
         self.running = True
 
@@ -143,15 +163,13 @@ class BombeRLeWorld(object):
         state['self'] = agent.get_state()
         state['others'] = [other.get_state() for other in self.active_agents if other is not agent]
         state['bombs'] = [bomb.get_state() for bomb in self.bombs]
-        state['coins'] = [coin.get_state() for coin in self.coins]
+        state['coins'] = [coin.get_state() for coin in self.coins if coin.collectable]
         explosion_map = np.zeros(self.arena.shape)
         for e in self.explosions:
             for (x,y) in e.blast_coords:
                 explosion_map[x,y] = max(explosion_map[x,y], e.timer)
         state['explosions'] = explosion_map
         state['user_input'] = self.user_input
-        state['coins'] = [(c.x, c.y) for c in self.coins if not c.picked_up]
-        # state['bombs_left'] = agent.bombs_left # this is contained in agent.get_state()
         state['died'] = died
         return state
 
@@ -211,6 +229,8 @@ class BombeRLeWorld(object):
             self.logger.info(f'Agent <{a.name}> chose action {action} in {t:.2f}s.')
             a.times.append(t)
             a.mean_time = np.mean(a.times)
+            self.replay['actions'][a.name].append(action)
+
             if action == 'UP' and self.tile_is_free(a.x, a.y - 1):
                 a.y -= 1
                 a.events.append(e.MOVED_UP)
@@ -240,13 +260,13 @@ class BombeRLeWorld(object):
 
         # Coins
         for coin in self.coins:
-            for a in self.active_agents:
-                if a.x == coin.x and a.y == coin.y:
-                    coin.picked_up = True
-                    self.logger.info(f'Agent <{a.name}> picked up coin at {(a.x, a.y)} and receives 1 point')
-                    a.update_score(s.reward_coin)
-                    a.events.append(e.COIN_COLLECTED)
-        self.coins = [c for c in self.coins if not c.picked_up]
+            if coin.collectable:
+                for a in self.active_agents:
+                    if a.x == coin.x and a.y == coin.y:
+                        coin.collectable = False
+                        self.logger.info(f'Agent <{a.name}> picked up coin at {(a.x, a.y)} and receives 1 point')
+                        a.update_score(s.reward_coin)
+                        a.events.append(e.COIN_COLLECTED)
 
         # Bombs
         for bomb in self.bombs:
@@ -261,11 +281,12 @@ class BombeRLeWorld(object):
                     if self.arena[x,y] == 1:
                         self.arena[x,y] = 0
                         bomb.owner.events.append(e.CRATE_DESTROYED)
-                        # Maybe spawn a coin
-                        if np.random.rand() < s.coin_drop_rate:
-                            self.logger.info(f'Coin dropped at {(x,y)}')
-                            self.coins.append(Coin((x,y)))
-                            bomb.owner.events.append(e.COIN_FOUND)
+                        # Maybe reveal a coin
+                        for c in self.coins:
+                            if (c.x,c.y) == (x,y):
+                                c.collectable = True
+                                self.logger.info(f'Coin found at {(x,y)}')
+                                bomb.owner.events.append(e.COIN_FOUND)
                 # Create explosion
                 screen_coords = [(s.grid_offset[0] + s.grid_size*x, s.grid_offset[1] + s.grid_size*y) for (x,y) in blast_coords]
                 self.explosions.append(Explosion(blast_coords, screen_coords, bomb.owner))
@@ -355,6 +376,10 @@ class BombeRLeWorld(object):
             slowest = max(self.agents, key=lambda a: a.mean_time)
             self.logger.info(f'Agent <{slowest.name}> loses 1 point for being slowest (avg. {slowest.mean_time:.3f}s)')
             slowest.update_score(s.reward_slow)
+            # Save course of the game for replay
+            if self.save_replay:
+                with open(f'replays/{self.round_id}.pt', 'wb') as f:
+                    pickle.dump(self.replay, f)
         else:
             self.logger.warn('End-of-round requested while no round was running')
 
@@ -401,7 +426,8 @@ class BombeRLeWorld(object):
         for bomb in self.bombs:
             bomb.render(self.screen, s.grid_offset[0] + s.grid_size*bomb.x, s.grid_offset[1] + s.grid_size*bomb.y)
         for coin in self.coins:
-            coin.render(self.screen, s.grid_offset[0] + s.grid_size*coin.x, s.grid_offset[1] + s.grid_size*coin.y)
+            if coin.collectable:
+                coin.render(self.screen, s.grid_offset[0] + s.grid_size*coin.x, s.grid_offset[1] + s.grid_size*coin.y)
 
         # Agents
         for agent in self.active_agents:
@@ -412,9 +438,9 @@ class BombeRLeWorld(object):
             explosion.render(self.screen)
 
         # Scores
-        self.agents.sort(key=lambda a: (a.score, -a.mean_time), reverse=True)
+        agents = sorted(self.agents, key=lambda a: (a.score, -a.mean_time), reverse=True)
         y_base = s.grid_offset[1] + 15
-        for i, a in enumerate(self.agents):
+        for i, a in enumerate(agents):
             bounce = 0 if (i>0 or self.running) else np.abs(10*np.sin(5*time()))
             a.render(self.screen, 600, y_base + 50*i - 15 - bounce)
             self.render_text(a.name, 650, y_base + 50*i,
@@ -429,7 +455,7 @@ class BombeRLeWorld(object):
 
         # End of round info
         if not self.running:
-            w = self.agents[0]
+            w = agents[0]
             x_center = (s.width - s.grid_offset[0] - s.cols * s.grid_size) / 2 + s.grid_offset[0] + s.cols * s.grid_size
             color = np.int_((255*(np.sin(3*time())/3 + .66),
                              255*(np.sin(4*time()+np.pi/3)/3 + .66),

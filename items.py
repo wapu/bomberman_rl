@@ -21,7 +21,7 @@ class Coin(Item):
         self.x = pos[0]
         self.y = pos[1]
         self.avatar = pygame.image.load('assets/coin.png')
-        self.picked_up = False
+        self.collectable = False
 
     def get_state(self):
         return (self.x, self.y)
