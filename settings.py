@@ -23,7 +23,8 @@ settings = {
     'grid_size': 30,
     'actions': ['UP', 'DOWN', 'LEFT', 'RIGHT', 'BOMB', 'WAIT'],
     'max_agents': 4,
-    'max_steps': 300,
+    'max_steps': 500,
+    'stop_if_not_training': False,
 
     # Rules for agents
     'timeout': 5.0,
@@ -72,6 +73,6 @@ events = [
 
     'GOT_KILLED',
     'OPPONENT_ELIMINATED',
-    'GAME_WON',
+    'SURVIVED_ROUND',
 ]
 e = namedtuple('Events', events)(*range(len(events)))

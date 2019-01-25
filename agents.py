@@ -74,7 +74,7 @@ class AgentProcess(mp.Process):
                 # Receive new game state and check for exit message
                 self.wlogger.debug('Receive game state')
                 self.game_state = self.pipe_to_world.recv()
-                if self.game_state['died']:
+                if self.game_state['exit']:
                     self.ready_flag.set()
                     self.wlogger.info('Received exit message for round')
                     break
@@ -143,7 +143,6 @@ class Agent(object):
         self.ready_flag = ready_flag
         self.color = color
         self.train_flag = train_flag
-        self.events = []
 
         # Load custom avatar or standard robot avatar of assigned color
         try:
@@ -158,7 +157,6 @@ class Agent(object):
 
         self.x, self.y = 1, 1
         self.total_score = 0
-
         self.bomb_timer = 5
         self.explosion_timer = 3
         self.bomb_power = 3
@@ -166,8 +164,10 @@ class Agent(object):
 
         self.reset()
 
-    def reset(self):
+    def reset(self, current_round=None):
         """Make agent ready for a new game round."""
+        if current_round:
+            self.pipe.send(current_round)
         self.times = []
         self.mean_time = 0
         self.dead = False
@@ -193,3 +193,25 @@ class Agent(object):
         screen.blit(self.avatar, (x, y))
         if self.dead:
             screen.blit(self.shade, (x, y))
+
+
+
+class ReplayAgent(Agent):
+    """Agents class specifically for playing back pre-recorded games."""
+
+    def __init__(self, name, color, x, y):
+        """Recreate the agent as it was at the beginning of the original game."""
+        self.name = name
+        self.x, self.y = x, y
+        self.color = color
+
+        # Load custom avatar or standard robot avatar of assigned color
+        self.avatar = pygame.image.load(f'assets/robot_{self.color}.png')
+
+        self.total_score = 0
+        self.bomb_timer = 5
+        self.explosion_timer = 3
+        self.bomb_power = 3
+        self.bomb_type = Bomb
+
+        self.reset()

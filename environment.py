@@ -17,7 +17,23 @@ from settings import s, e
 class BombeRLeWorld(object):
 
     def __init__(self, agents, save_replay=False):
-        # Set up logging
+        self.setup_logging()
+        if s.gui:
+            self.setup_gui()
+
+        # Available robot colors
+        self.colors = ['blue', 'green', 'yellow', 'pink']
+        self.setup_agents(agents)
+
+        # Get the game going
+        self.round = 0
+        self.running = False
+        self.save_replay = save_replay
+        self.ready_for_restart_flag = mp.Event()
+        self.new_round()
+
+
+    def setup_logging(self):
         self.logger = logging.getLogger('BombeRLeWorld')
         self.logger.setLevel(s.log_game)
         handler = logging.FileHandler('logs/game.log', mode='w')
@@ -27,44 +43,41 @@ class BombeRLeWorld(object):
         self.logger.addHandler(handler)
         self.logger.info('Initializing game world')
 
-        # Available robot colors
-        self.colors = ['blue', 'green', 'yellow', 'pink']
 
-        if s.gui:
-            # Initialize screen
-            self.screen = pygame.display.set_mode((s.width, s.height))
-            pygame.display.set_caption('BombeRLe')
-            icon = pygame.image.load(f'assets/bomb_yellow.png')
-            pygame.display.set_icon(icon)
+    def setup_gui(self):
+        # Initialize screen
+        self.screen = pygame.display.set_mode((s.width, s.height))
+        pygame.display.set_caption('BombeRLe')
+        icon = pygame.image.load(f'assets/bomb_yellow.png')
+        pygame.display.set_icon(icon)
 
-            # Background and tiles
-            self.background = pygame.Surface((s.width, s.height))
-            self.background = self.background.convert()
-            self.background.fill((0,0,0))
-            self.t_wall = pygame.image.load('assets/brick.png')
-            self.t_crate = pygame.image.load('assets/crate.png')
+        # Background and tiles
+        self.background = pygame.Surface((s.width, s.height))
+        self.background = self.background.convert()
+        self.background.fill((0,0,0))
+        self.t_wall = pygame.image.load('assets/brick.png')
+        self.t_crate = pygame.image.load('assets/crate.png')
 
-            # Font for scores and such
-            # font_name = pygame.font.match_font('roboto')
-            font_name = 'assets/emulogic.ttf'
-            self.fonts = {
-                'huge': pygame.font.Font(font_name, 20),
-                'big': pygame.font.Font(font_name, 16),
-                'medium': pygame.font.Font(font_name, 10),
-                'small': pygame.font.Font(font_name, 8),
-            }
+        # Font for scores and such
+        # font_name = pygame.font.match_font('roboto')
+        font_name = 'assets/emulogic.ttf'
+        self.fonts = {
+            'huge': pygame.font.Font(font_name, 20),
+            'big': pygame.font.Font(font_name, 16),
+            'medium': pygame.font.Font(font_name, 10),
+            'small': pygame.font.Font(font_name, 8),
+        }
 
+
+    def setup_agents(self, agents):
         # Add specified agents and start their subprocesses
         self.agents = []
         for agent_dir, train in agents:
-            self.add_agent(agent_dir, train=train)
-
-        # Get the game going
-        self.round = 0
-        self.running = False
-        self.save_replay = save_replay
-        self.ready_for_restart_flag = mp.Event()
-        self.new_round()
+            if list([d for d,t in agents]).count(agent_dir) > 1:
+                name = agent_dir + '_' + str(list([a.process.agent_dir for a in self.agents]).count(agent_dir))
+            else:
+                name = agent_dir
+            self.add_agent(agent_dir, name, train=train)
 
 
     def new_round(self):
@@ -93,6 +106,15 @@ class BombeRLeWorld(object):
             for y in range(s.rows):
                 if (x+1)*(y+1) % 2 == 1:
                     self.arena[x,y] = -1
+
+        # Starting positions
+        self.start_positions = [(1,1), (1,s.rows-2), (s.cols-2,1), (s.cols-2,s.rows-2)]
+        random.shuffle(self.start_positions)
+        for (x,y) in self.start_positions:
+            for (xx,yy) in [(x,y), (x-1,y), (x+1,y), (x,y-1), (x,y+1)]:
+                if self.arena[xx,yy] == 1:
+                    self.arena[xx,yy] = 0
+
         # Distribute coins evenly
         self.coins = []
         for i in range(3):
@@ -105,18 +127,9 @@ class BombeRLeWorld(object):
                         # self.arena[x,y] = 0
                         break
 
-        # Starting positions
-        self.start_positions = [(1,1), (1,s.rows-2), (s.cols-2,1), (s.cols-2,s.rows-2)]
-        random.shuffle(self.start_positions)
-        for (x,y) in self.start_positions:
-            for (xx,yy) in [(x,y), (x-1,y), (x+1,y), (x,y-1), (x,y+1)]:
-                if self.arena[xx,yy] == 1:
-                    self.arena[xx,yy] = 0
-
         # Reset agents and distribute starting positions
         for agent in self.agents:
-            agent.reset()
-            agent.pipe.send(self.round)
+            agent.reset(self.round)
             self.active_agents.append(agent)
             agent.x, agent.y = self.start_positions.pop()
 
@@ -130,11 +143,8 @@ class BombeRLeWorld(object):
         self.running = True
 
 
-    def add_agent(self, agent_dir, train=False):
+    def add_agent(self, agent_dir, name, train=False):
         if len(self.agents) < s.max_agents:
-            # Add unique suffix to name
-            name = agent_dir + '_' + str(list([a.process.agent_dir for a in self.agents]).count(agent_dir))
-
             # Set up a new process to run the agent's code
             pipe_to_world, pipe_to_agent = mp.Pipe()
             ready_flag = mp.Event()
@@ -156,7 +166,7 @@ class BombeRLeWorld(object):
             self.logger.debug(f'Setup finished for agent <{agent.name}>')
 
 
-    def get_state_for_agent(self, agent, died=False):
+    def get_state_for_agent(self, agent, exit=False):
         state = {}
         state['step'] = self.step
         state['arena'] = np.array(self.arena)
@@ -170,7 +180,7 @@ class BombeRLeWorld(object):
                 explosion_map[x,y] = max(explosion_map[x,y], e.timer)
         state['explosions'] = explosion_map
         state['user_input'] = self.user_input
-        state['died'] = died
+        state['exit'] = exit
         return state
 
 
@@ -182,13 +192,32 @@ class BombeRLeWorld(object):
         return is_free
 
 
-    def do_step(self, user_input='WAIT'):
-        self.step += 1
-        self.logger.info(f'STARTING STEP {self.step}')
+    def perform_agent_action(self, agent, action):
+        # Perform the specified action if possible, wait otherwise
+        if action == 'UP' and self.tile_is_free(agent.x, agent.y - 1):
+            agent.y -= 1
+            agent.events.append(e.MOVED_UP)
+        elif action == 'DOWN' and self.tile_is_free(agent.x, agent.y + 1):
+            agent.y += 1
+            agent.events.append(e.MOVED_DOWN)
+        elif action == 'LEFT' and self.tile_is_free(agent.x - 1, agent.y):
+            agent.x -= 1
+            agent.events.append(e.MOVED_LEFT)
+        elif action == 'RIGHT' and self.tile_is_free(agent.x + 1, agent.y):
+            agent.x += 1
+            agent.events.append(e.MOVED_RIGHT)
+        elif action == 'BOMB' and agent.bombs_left > 0:
+            self.logger.info(f'Agent <{agent.name}> drops bomb at {(agent.x, agent.y)}')
+            self.bombs.append(agent.make_bomb())
+            agent.bombs_left -= 1
+            agent.events.append(e.BOMB_DROPPED)
+        elif action == 'WAIT':
+            agent.events.append(e.WAITED)
+        else:
+            agent.events.append(e.INVALID_ACTION)
 
-        self.user_input = user_input
-        self.logger.debug(f'User input: {self.user_input}')
 
+    def poll_and_run_agents(self):
         # Send world state to all agents
         for a in self.active_agents:
             self.logger.debug(f'Sending game state to agent <{a.name}>')
@@ -216,7 +245,6 @@ class BombeRLeWorld(object):
                     if not a.ready_flag.is_set():
                         os.kill(a.process.pid, signal.SIGINT)
                 else:
-                    pass
                     # Special case for Windows
                     if not a.ready_flag.is_set():
                         os.kill(a.process.pid, signal.CTRL_C_EVENT)
@@ -231,32 +259,30 @@ class BombeRLeWorld(object):
             a.mean_time = np.mean(a.times)
             self.replay['actions'][a.name].append(action)
 
-            if action == 'UP' and self.tile_is_free(a.x, a.y - 1):
-                a.y -= 1
-                a.events.append(e.MOVED_UP)
-            elif action == 'DOWN' and self.tile_is_free(a.x, a.y + 1):
-                a.y += 1
-                a.events.append(e.MOVED_DOWN)
-            elif action == 'LEFT' and self.tile_is_free(a.x - 1, a.y):
-                a.x -= 1
-                a.events.append(e.MOVED_LEFT)
-            elif action == 'RIGHT' and self.tile_is_free(a.x + 1, a.y):
-                a.x += 1
-                a.events.append(e.MOVED_RIGHT)
-            elif action == 'BOMB' and a.bombs_left > 0:
-                self.logger.info(f'Agent <{a.name}> drops bomb at {(a.x, a.y)}')
-                self.bombs.append(a.make_bomb())
-                a.bombs_left -= 1
-                a.events.append(e.BOMB_DROPPED)
-            elif action == 'WAIT':
-                a.events.append(e.WAITED)
-            else:
-                a.events.append(e.INVALID_ACTION)
+            self.perform_agent_action(a, action)
 
         # Reset agent flags
         for a in self.active_agents:
             self.logger.debug(f'Clearing flag for agent <{a.name}>')
             a.ready_flag.clear()
+
+
+    def put_down_agent(self, agent):
+        # Send exit message to end round for this agent
+        self.logger.debug(f'Send exit message to end round for {agent.name}')
+        agent.pipe.send(self.get_state_for_agent(agent, exit=True))
+        agent.ready_flag.wait()
+        agent.ready_flag.clear()
+
+
+    def do_step(self, user_input='WAIT'):
+        self.step += 1
+        self.logger.info(f'STARTING STEP {self.step}')
+
+        self.user_input = user_input
+        self.logger.debug(f'User input: {self.user_input}')
+
+        self.poll_and_run_agents()
 
         # Coins
         for coin in self.coins:
@@ -321,28 +347,21 @@ class BombeRLeWorld(object):
             for aa in self.active_agents:
                 if aa is not a:
                     aa.events.append(e.OPPONENT_ELIMINATED)
-            # Send exit message to end round for this agent
-            self.logger.debug(f'Send exit message to end round for {a.name}')
-            a.pipe.send(self.get_state_for_agent(a, died=True))
+            self.put_down_agent(a)
         self.explosions = [e for e in self.explosions if e.active]
 
-        if len(self.active_agents) <= 1:
-            self.logger.debug(f'Only {len(self.active_agents)} agent(s) left, wrap up game')
+        # Check round stopping criteria
+        if len(self.active_agents) == 0:
+            self.logger.info(f'No agent left alive, wrap up round')
             self.end_round()
             return
-
-        train_agent_left = False
-        for a in self.active_agents:
-            if a.train_flag.is_set():
-                train_agent_left = True
-
-        if not train_agent_left:
-            self.logger.debug('No training agent left, wrap up game')
-            self.end_round()
-            return
-
+        if s.stop_if_not_training:
+            if not any([a.train_flag.is_set() for a in self.active_agents]):
+                self.logger.info('No training agent left alive, wrap up round')
+                self.end_round()
+                return
         if self.step >= s.max_steps:
-            self.logger.debug('Aborting long round')
+            self.logger.info('Maximum number of steps reached, wrap up round')
             self.end_round()
             return
 
@@ -354,18 +373,12 @@ class BombeRLeWorld(object):
             sleep(s.update_interval)
 
             self.logger.info(f'WRAPPING UP ROUND #{self.round}')
+            # Clean up survivors
             for a in self.active_agents:
-                # Reward survivor(s)
-                self.logger.info(f'Agent <{a.name}> receives 1 point for surviving')
-                a.update_score(s.reward_last)
-                a.events.append(e.GAME_WON)
-                # Send exit message to end round for this agent
-                self.logger.debug(f'Sending exit message to agent <{a.name}>')
-                a.pipe.send(self.get_state_for_agent(a, died=True))
-                a.ready_flag.wait()
-                a.ready_flag.clear()
+                a.events.append(e.SURVIVED_ROUND)
+                self.put_down_agent(a)
+            # Send final event queue to agents that expect them
             for a in self.agents:
-                # Send final event queue to agent if it expects one
                 if a.train_flag.is_set():
                     self.logger.debug(f'Sending final event queue {a.events} to agent <{a.name}>')
                     a.pipe.send(a.events)
@@ -373,10 +386,12 @@ class BombeRLeWorld(object):
                     a.ready_flag.wait()
                     a.ready_flag.clear()
             # Penalty for agent who spent most time thinking
-            slowest = max(self.agents, key=lambda a: a.mean_time)
-            self.logger.info(f'Agent <{slowest.name}> loses 1 point for being slowest (avg. {slowest.mean_time:.3f}s)')
-            slowest.update_score(s.reward_slow)
-            # Save course of the game for replay
+            if len(self.agents) > 1:
+                self.replay['times'] = [a.mean_time for a in self.agents]
+                slowest = max(self.agents, key=lambda a: a.mean_time)
+                self.logger.info(f'Agent <{slowest.name}> loses 1 point for being slowest (avg. {slowest.mean_time:.3f}s)')
+                slowest.update_score(s.reward_slow)
+            # Save course of the game for future replay
             if self.save_replay:
                 with open(f'replays/{self.round_id}.pt', 'wb') as f:
                     pickle.dump(self.replay, f)
@@ -385,6 +400,7 @@ class BombeRLeWorld(object):
 
         self.logger.debug('Setting ready_for_restart_flag')
         self.ready_for_restart_flag.set()
+
 
     def end(self):
         self.logger.info('SHUT DOWN')
@@ -471,3 +487,79 @@ class BombeRLeWorld(object):
             else:
                 self.render_text(f'But {w_total.name} is in the lead.', x_center, 390, (128,128,128),
                                  valign='top', halign='center', size='medium')
+
+
+
+class ReplayWorld(BombeRLeWorld):
+
+    def __init__(self, replay_file):
+        assert s.gui, 'Replay only makes sense with active GUI.'
+        self.setup_logging()
+        self.setup_gui()
+
+        self.logger.info(f'Loading replay file "{replay_file}"')
+        self.replay_file = replay_file
+        with open(f'replays/{replay_file}', 'rb') as f:
+            self.replay = pickle.load(f)
+
+        # Recreate the agents
+        self.colors = ['blue', 'green', 'yellow', 'pink']
+        self.agents = [ReplayAgent(name, self.colors.pop(), x, y)
+            for (x,y,name,b) in self.replay['agents']]
+        for i,t in enumerate(self.replay['times']):
+            self.agents[i].mean_time = t
+
+        # Get the game going
+        self.round = 1
+        self.save_replay = False
+        self.ready_for_restart_flag = mp.Event()
+        self.new_round()
+
+
+    def new_round(self):
+        self.logger.info('STARTING REPLAY')
+        pygame.display.set_caption(f'{self.replay_file}')
+
+        # Bookkeeping
+        self.step = 0
+        self.active_agents = []
+        self.bombs = []
+        self.explosions = []
+        self.running = True
+
+        # Game world and objects
+        self.arena = self.replay['arena']
+        self.coins = self.replay['coins']
+        self.active_agents = [a for a in self.agents]
+
+
+    def poll_and_run_agents(self):
+        # Perform recorded agent actions
+        for a in self.active_agents:
+            self.logger.debug(f'Repeating action from agent <{a.name}>')
+            action = self.replay['actions'][a.name][step]
+            self.logger.info(f'Agent <{a.name}> chose action {action}.')
+            self.perform_agent_action(a, action)
+
+
+    def end_round(self):
+        if self.running:
+            self.running = False
+            # Wait in case there is still a game step running
+            sleep(s.update_interval)
+
+            self.logger.info(f'WRAPPING UP REPLAY')
+            # Penalty for agent who spent most time thinking
+            if len(self.agents) > 1:
+                slowest = max(self.agents, key=lambda a: a.mean_time)
+                self.logger.info(f'Agent <{slowest.name}> loses 1 point for being slowest (avg. {slowest.mean_time:.3f}s)')
+                slowest.update_score(s.reward_slow)
+        else:
+            self.logger.warn('End-of-round requested while no round was running')
+
+        self.logger.debug('Setting ready_for_restart_flag')
+        self.ready_for_restart_flag.set()
+
+
+    def put_down_agent(self, agent): pass
+    def end(self): pass

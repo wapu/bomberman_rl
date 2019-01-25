@@ -7,21 +7,25 @@ from collections import deque
 from settings import s
 
 
-def look_for_targets(free_space, start, targets):
+def look_for_targets(free_space, start, targets, logger=None):
     """Find direction of closest target that can be reached via free tiles.
 
     Performs a breadth-first search of the reachable free tiles until a target is encountered.
-    If no target is found, the tile that is closest to any target is chosen.
+    If no target can be reached, the path that takes the agent closest to any target is chosen.
 
     Args:
         free_space: Boolean numpy array. True for free tiles and False for obstacles.
         start: the coordinate from which to begin the search.
         targets: list or array holding the coordinates of all target tiles.
+        logger: optional logger object for debugging.
     Returns:
         coordinate of first step towards closest target or towards tile closest to any target.
     """
+    if len(targets) == 0: return None
+
     frontier = [start]
     parent_dict = {start: start}
+    dist_so_far = {start: 0}
     best = start
     best_dist = np.sum(np.abs(np.subtract(targets, start)), axis=1).min()
 
@@ -29,17 +33,23 @@ def look_for_targets(free_space, start, targets):
         current = frontier.pop(0)
         # Find distance from current position to all targets, track closest
         d = np.sum(np.abs(np.subtract(targets, current)), axis=1).min()
-        if d <= best_dist:
+        if d + dist_so_far[current] <= best_dist:
             best = current
-            best_dist = d
-        if d == 0: break
-        # Add unexplored free neighboring tiles to the queue
+            best_dist = d + dist_so_far[current]
+        if d == 0:
+            # Found path to a target's exact position, mission accomplished!
+            best = current
+            break
+        # Add unexplored free neighboring tiles to the queue in a random order
         x, y = current
         neighbors = [(x,y) for (x,y) in [(x+1,y), (x-1,y), (x,y+1), (x,y-1)] if free_space[x,y]]
+        shuffle(neighbors)
         for neighbor in neighbors:
             if neighbor not in parent_dict:
                 frontier.append(neighbor)
                 parent_dict[neighbor] = current
+                dist_so_far[neighbor] = dist_so_far[current] + 1
+    if logger: logger.debug(f'Suitable target found at {best}')
     # Determine the first step towards the best found target tile
     current = best
     while True:
@@ -51,14 +61,18 @@ def setup(agent):
     """Called once before a set of games to initialize data structures etc.
 
     The 'agent' object passed to this method will be the same in all other
-    callback methods. You can assign new properties (like agent.history below)
+    callback methods. You can assign new properties (like bomb_history below)
     here or later on and they will be persistent even across multiple games.
     You can also use the agent.logger object at any time to write to the log
     file for debugging (see https://docs.python.org/3.7/library/logging.html).
     """
     agent.logger.debug('Successfully entered setup code')
     np.random.seed()
-    agent.history = deque(['WAIT',])
+    # Fixed length FIFO queues to avoid repeating the same actions
+    agent.bomb_history = deque([], 5)
+    agent.coordinate_history = deque([], 20)
+    # While this timer is positive, agent will not hunt/attack opponents
+    agent.ignore_others_timer = 0
 
 
 def act(agent):
@@ -89,61 +103,71 @@ def act(agent):
             if (0 < i < bomb_map.shape[0]) and (0 < j < bomb_map.shape[1]):
                 bomb_map[i,j] = min(bomb_map[i,j], t)
 
+    # If agent has been in the same location three times recently, it's a loop
+    if agent.coordinate_history.count((x,y)) > 2:
+        agent.ignore_others_timer = 5
+    else:
+        agent.ignore_others_timer -= 1
+    agent.coordinate_history.append((x,y))
+
     # Check which moves make sense at all
     directions = [(x,y), (x+1,y), (x-1,y), (x,y+1), (x,y-1)]
-    valid, valid_actions = [], []
+    valid_tiles, valid_actions = [], []
     for d in directions:
         if ((arena[d] == 0) and
             (agent.game_state['explosions'][d] <= 1) and
             (bomb_map[d] > 0) and
             (not d in others) and
             (not d in bomb_xys)):
-            valid.append(d)
-    if (x-1,y) in valid: valid_actions.append('LEFT')
-    if (x+1,y) in valid: valid_actions.append('RIGHT')
-    if (x,y-1) in valid: valid_actions.append('UP')
-    if (x,y+1) in valid: valid_actions.append('DOWN')
-    if bombs_left > 0: valid_actions.append('BOMB')
+            valid_tiles.append(d)
+    if (x-1,y) in valid_tiles: valid_actions.append('LEFT')
+    if (x+1,y) in valid_tiles: valid_actions.append('RIGHT')
+    if (x,y-1) in valid_tiles: valid_actions.append('UP')
+    if (x,y+1) in valid_tiles: valid_actions.append('DOWN')
+    if (x,y)   in valid_tiles: valid_actions.append('WAIT')
+    # Disallow the BOMB action if agent dropped a bomb in the same spot recently
+    if (bombs_left > 0) and (x,y) not in agent.bomb_history: valid_actions.append('BOMB')
     agent.logger.debug(f'Valid actions: {valid_actions}')
-
-    # Check for cycles in previous behaviour, remove repeating actions from
-    # valid actions list (this is not ideal yet)
-    last_action = agent.history[0]
-    if len(agent.history) > 40:
-        try:
-            prev_occurrence = agent.history.index(last_action, 1)
-            if prev_occurrence < len(agent.history) / 2:
-                length = max(prev_occurrence, 20)
-                cycle = True
-                for i in range(1, length):
-                    if agent.history[i] != agent.history[prev_occurrence + i]:
-                        cycle = False
-                        break
-                if cycle:
-                    # Disallow the action that followed after the last time
-                    a = agent.history[prev_occurrence - 1]
-                    agent.logger.debug(f'Encountered cycle of length {length}, avoid action {a}')
-                    if a in valid_actions:
-                        valid_actions.remove(a)
-        except ValueError:
-            # Action never occurred before, no problem
-            pass
 
     # Collect basic action proposals in a queue
     # Later on, the last added action that is also valid will be chosen
     action_ideas = ['UP', 'DOWN', 'LEFT', 'RIGHT']
     shuffle(action_ideas)
 
-    # Add action proposal to head towards nearest coin or opponent
-    d = look_for_targets(arena == 0, (x,y), others+coins)
+    # Compile a list of 'targets' the agent should head towards, and their priority
+    dead_ends = [(x,y) for x in range(1,16) for y in range(1,16) if (arena[x,y] == 0)
+                    and ([arena[x+1,y], arena[x-1,y], arena[x,y+1], arena[x,y-1]].count(0) == 1)]
+    crates = [(x,y) for x in range(1,16) for y in range(1,16) if (arena[x,y] == 1)]
+    targets = coins + dead_ends + crates
+    if agent.ignore_others_timer <= 0:
+        targets.extend(others)
+
+    # Exclude targets that are currently occupied by a bomb
+    targets = [targets[i] for i in range(len(targets)) if targets[i] not in bomb_xys]
+
+    # Take a step towards the most immediately interesting target
+    free_space = arena == 0
+    if agent.ignore_others_timer > 0:
+        for o in others:
+            free_space[o] = False
+    d = look_for_targets(free_space, (x,y), targets, agent.logger)
     if d == (x,y-1): action_ideas.append('UP')
     if d == (x,y+1): action_ideas.append('DOWN')
     if d == (x-1,y): action_ideas.append('LEFT')
     if d == (x+1,y): action_ideas.append('RIGHT')
-    if d == (x,y): action_ideas.append('BOMB')
+    if d is None:
+        agent.logger.debug('All targets gone, nothing to do anymore')
+        action_ideas.append('WAIT')
 
-    # Add proposal to drop a bomb if at dead end or next to opponent
-    if len(valid) == 2 or (min(abs(xy[0] - x) + abs(xy[1] - y) for xy in others)) <= 1:
+    # Add proposal to drop a bomb if at dead end
+    if (x,y) in dead_ends:
+        action_ideas.append('BOMB')
+    # Add proposal to drop a bomb if touching an opponent
+    if len(others) > 0:
+        if (min(abs(xy[0] - x) + abs(xy[1] - y) for xy in others)) <= 1:
+            action_ideas.append('BOMB')
+    # Add proposal to drop a bomb if arrived at target and touching crate
+    if d == (x,y) and ([arena[x+1,y], arena[x-1,y], arena[x,y+1], arena[x,y-1]].count(1) > 0):
         action_ideas.append('BOMB')
 
     # Add proposal to run away from any nearby bomb about to blow
@@ -162,6 +186,10 @@ def act(agent):
             # If possible, turn a corner
             action_ideas.append('UP')
             action_ideas.append('DOWN')
+    # Try random direction if directly on top of a bomb
+    for xb,yb,t in bombs:
+        if xb == x and yb == y:
+            action_ideas.extend(action_ideas[:4])
 
     # Pick last action added to the proposals list that is also valid
     while len(action_ideas) > 0:
@@ -171,7 +199,8 @@ def act(agent):
             break
 
     # Keep track of chosen action for cycle detection
-    agent.history.appendleft(agent.next_action)
+    if agent.next_action == 'BOMB':
+        agent.bomb_history.append((x,y))
 
 
 def reward_update(agent):
@@ -183,7 +212,7 @@ def reward_update(agent):
     agent based on these events and your knowledge of the (new) game state. In
     contrast to act, this method has no time limit.
     """
-    agent.logger.debug(f'Encountered {len(agent.events)} game events.')
+    agent.logger.debug(f'Encountered {len(agent.events)} game event(s)')
 
 
 def end_of_episode(agent):
@@ -193,4 +222,4 @@ def end_of_episode(agent):
     game. agent.events will contain all events that occured during your agent's
     final step. You should place your actual learning code in this method.
     """
-    agent.logger.debug(f'Encountered {len(agent.events)} game events in final step.')
+    agent.logger.debug(f'Encountered {len(agent.events)} game event(s) in final step')
