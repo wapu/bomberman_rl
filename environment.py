@@ -134,7 +134,7 @@ class BombeRLeWorld(object):
             agent.x, agent.y = self.start_positions.pop()
 
         self.replay = {
-                'arena': self.arena,
+                'arena': np.array(self.arena),
                 'coins': [c.get_state() for c in self.coins],
                 'agents': [a.get_state() for a in self.agents],
                 'actions': dict([(a.name, []) for a in self.agents]),
@@ -528,16 +528,20 @@ class ReplayWorld(BombeRLeWorld):
         self.running = True
 
         # Game world and objects
-        self.arena = self.replay['arena']
-        self.coins = self.replay['coins']
+        self.arena = np.array(self.replay['arena'])
+        self.coins = [Coin(xy) for xy in self.replay['coins']]
         self.active_agents = [a for a in self.agents]
+        for i, agent in enumerate(self.agents):
+            agent.reset()
+            agent.x, agent.y = self.replay['agents'][i][:2]
+            agent.total_score = 0
 
 
     def poll_and_run_agents(self):
         # Perform recorded agent actions
         for a in self.active_agents:
             self.logger.debug(f'Repeating action from agent <{a.name}>')
-            action = self.replay['actions'][a.name][step]
+            action = self.replay['actions'][a.name][self.step-1]
             self.logger.info(f'Agent <{a.name}> chose action {action}.')
             self.perform_agent_action(a, action)
 

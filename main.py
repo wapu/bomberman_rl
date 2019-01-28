@@ -10,7 +10,7 @@ import numpy as np
 import multiprocessing as mp
 import threading
 
-from environment import BombeRLeWorld
+from environment import BombeRLeWorld, ReplayWorld
 from settings import s
 
 
@@ -41,11 +41,12 @@ def main():
 
     # Initialize environment and agents
     world = BombeRLeWorld([
-        ('rl_agent', True),
-        ('simple_agent', False),
-        ('simple_agent', False),
-        ('simple_agent', False)
-    ])
+            ('simple_agent', True),
+            ('simple_agent', True),
+            ('simple_agent', True),
+            ('simple_agent', True)
+        ], save_replay=False)
+    # world = ReplayWorld('BombeRLe_replay_1548669200.0723565.pt')
     user_inputs = []
 
     # Start game logic thread
@@ -90,19 +91,6 @@ def main():
                         if s.turn_based:
                             user_inputs.clear()
                         user_inputs.append(s.input_map.get(key_pressed))
-
-            # # Game logic
-            # if ((s.turn_based and not key_pressed)
-            #         or (s.gui and (time()-last_update < s.update_interval))):
-            #     pass
-            # else:
-            #     if world.running:
-            #         last_update = time()
-            #         try:
-            #             world.do_step(user_inputs.pop(0) if len(user_inputs) else 'WAIT')
-            #         except Exception as e:
-            #             world.end_round()
-            #             raise
 
             if not world.running and not s.gui:
                 round_finished = True
