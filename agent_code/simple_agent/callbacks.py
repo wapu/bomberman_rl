@@ -134,12 +134,13 @@ def act(agent):
     action_ideas = ['UP', 'DOWN', 'LEFT', 'RIGHT']
     shuffle(action_ideas)
 
-    # Compile a list of 'targets' the agent should head towards, and their priority
+    # Compile a list of 'targets' the agent should head towards
     dead_ends = [(x,y) for x in range(1,16) for y in range(1,16) if (arena[x,y] == 0)
                     and ([arena[x+1,y], arena[x-1,y], arena[x,y+1], arena[x,y-1]].count(0) == 1)]
     crates = [(x,y) for x in range(1,16) for y in range(1,16) if (arena[x,y] == 1)]
     targets = coins + dead_ends + crates
-    if agent.ignore_others_timer <= 0:
+    # Add other agents as targets if in hunting mode or no crates/coins left
+    if agent.ignore_others_timer <= 0 or (len(crates) + len(coins) == 0):
         targets.extend(others)
 
     # Exclude targets that are currently occupied by a bomb

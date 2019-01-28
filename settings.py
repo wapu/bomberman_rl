@@ -23,14 +23,13 @@ settings = {
     'grid_size': 30,
     'actions': ['UP', 'DOWN', 'LEFT', 'RIGHT', 'BOMB', 'WAIT'],
     'max_agents': 4,
-    'max_steps': 500,
+    'max_steps': 400,
     'stop_if_not_training': False,
 
     # Rules for agents
     'timeout': 5.0,
     'reward_kill': 3,
     'reward_coin': 1,
-    'reward_last': 0,
     'reward_slow': -1,
 
     # User input
