@@ -6,6 +6,7 @@ import random
 import pygame
 import pickle
 from pygame.locals import *
+from pygame.transform import smoothscale
 
 import logging
 
@@ -293,6 +294,7 @@ class BombeRLeWorld(object):
                         self.logger.info(f'Agent <{a.name}> picked up coin at {(a.x, a.y)} and receives 1 point')
                         a.update_score(s.reward_coin)
                         a.events.append(e.COIN_COLLECTED)
+                        a.trophies.append(Agent.coin_trophy)
 
         # Bombs
         for bomb in self.bombs:
@@ -335,11 +337,13 @@ class BombeRLeWorld(object):
                         if a is explosion.owner:
                             self.logger.info(f'Agent <{a.name}> blown up by own bomb')
                             a.events.append(e.KILLED_SELF)
+                            explosion.owner.trophies.append(Agent.suicide_trophy)
                         else:
                             self.logger.info(f'Agent <{a.name}> blown up by agent <{explosion.owner.name}>\'s bomb')
                             self.logger.info(f'Agent <{explosion.owner.name}> receives 1 point')
                             explosion.owner.update_score(s.reward_kill)
                             explosion.owner.events.append(e.KILLED_OPPONENT)
+                            explosion.owner.trophies.append(smoothscale(a.avatar, (15,15)))
         for a in agents_hit:
             a.dead = True
             self.active_agents.remove(a)
@@ -391,6 +395,7 @@ class BombeRLeWorld(object):
                 slowest = max(self.agents, key=lambda a: a.mean_time)
                 self.logger.info(f'Agent <{slowest.name}> loses 1 point for being slowest (avg. {slowest.mean_time:.3f}s)')
                 slowest.update_score(s.reward_slow)
+                slowest.trophies.append(Agent.time_trophy)
             # Save course of the game for future replay
             if self.save_replay:
                 with open(f'replays/{self.round_id}.pt', 'wb') as f:
@@ -454,14 +459,18 @@ class BombeRLeWorld(object):
             explosion.render(self.screen)
 
         # Scores
-        agents = sorted(self.agents, key=lambda a: (a.score, -a.mean_time), reverse=True)
+        # agents = sorted(self.agents, key=lambda a: (a.score, -a.mean_time), reverse=True)
+        agents = self.agents
+        leading = max(self.agents, key=lambda a: (a.score, -a.mean_time))
         y_base = s.grid_offset[1] + 15
         for i, a in enumerate(agents):
-            bounce = 0 if (i>0 or self.running) else np.abs(10*np.sin(5*time()))
+            bounce = 0 if (a is not leading or self.running) else np.abs(10*np.sin(5*time()))
             a.render(self.screen, 600, y_base + 50*i - 15 - bounce)
             self.render_text(a.name, 650, y_base + 50*i,
                              (64,64,64) if a.dead else (255,255,255),
                              valign='center', size='small')
+            for j, trophy in enumerate(a.trophies):
+                self.screen.blit(trophy, (660 + 10*j, y_base + 50*i + 12))
             self.render_text(f'{a.score:d}', 830, y_base + 50*i, (255,255,255),
                              valign='center', halign='right', size='big')
             self.render_text(f'{a.total_score:d}', 890, y_base + 50*i, (64,64,64),
@@ -471,21 +480,20 @@ class BombeRLeWorld(object):
 
         # End of round info
         if not self.running:
-            w = agents[0]
             x_center = (s.width - s.grid_offset[0] - s.cols * s.grid_size) / 2 + s.grid_offset[0] + s.cols * s.grid_size
             color = np.int_((255*(np.sin(3*time())/3 + .66),
                              255*(np.sin(4*time()+np.pi/3)/3 + .66),
                              255*(np.sin(5*time()-np.pi/3)/3 + .66)))
-            self.render_text(w.name, x_center, 320, color,
+            self.render_text(leading.name, x_center, 320, color,
                              valign='top', halign='center', size='huge')
             self.render_text('has won the round!', x_center, 350, color,
                              valign='top', halign='center', size='big')
-            w_total = max(self.agents, key=lambda a: (a.total_score, -a.mean_time))
-            if w_total is w:
-                self.render_text(f'{w_total.name} is also in the lead.', x_center, 390, (128,128,128),
+            leading_total = max(self.agents, key=lambda a: (a.total_score, -a.mean_time))
+            if leading_total is leading:
+                self.render_text(f'{leading_total.name} is also in the lead.', x_center, 390, (128,128,128),
                                  valign='top', halign='center', size='medium')
             else:
-                self.render_text(f'But {w_total.name} is in the lead.', x_center, 390, (128,128,128),
+                self.render_text(f'But {leading_total.name} is in the lead.', x_center, 390, (128,128,128),
                                  valign='top', halign='center', size='medium')
 
 
@@ -558,6 +566,7 @@ class ReplayWorld(BombeRLeWorld):
                 slowest = max(self.agents, key=lambda a: a.mean_time)
                 self.logger.info(f'Agent <{slowest.name}> loses 1 point for being slowest (avg. {slowest.mean_time:.3f}s)')
                 slowest.update_score(s.reward_slow)
+                slowest.trophies.append(Agent.time_trophy)
         else:
             self.logger.warn('End-of-round requested while no round was running')
 

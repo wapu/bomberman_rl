@@ -3,9 +3,10 @@ from time import time, sleep
 import os, signal
 import multiprocessing as mp
 import importlib
-import pygame
 import logging
+import pygame
 from pygame.locals import *
+from pygame.transform import smoothscale
 
 from items import *
 from settings import s, e
@@ -135,6 +136,10 @@ class AgentProcess(mp.Process):
 class Agent(object):
     """Class representing agents as game objects."""
 
+    coin_trophy = smoothscale(pygame.image.load('assets/coin.png'), (15,15))
+    suicide_trophy = smoothscale(pygame.image.load('assets/explosion_2.png'), (15,15))
+    time_trophy = pygame.image.load('assets/hourglass.png')
+
     def __init__(self, process, pipe_to_agent, ready_flag, color, train_flag):
         """Set up agent, process for custom code and inter-process communication."""
         self.name = process.name
@@ -174,6 +179,7 @@ class Agent(object):
         self.score = 0
         self.events = []
         self.bombs_left = 1
+        self.trophies = []
 
     def get_state(self):
         """Provide information about this agent for the global game state."""

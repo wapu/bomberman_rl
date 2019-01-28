@@ -28,7 +28,7 @@ settings = {
 
     # Rules for agents
     'timeout': 5.0,
-    'reward_kill': 3,
+    'reward_kill': 5,
     'reward_coin': 1,
     'reward_slow': -1,
 
