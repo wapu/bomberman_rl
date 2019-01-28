@@ -1,5 +1,6 @@
 
 from time import time
+from datetime import datetime
 import multiprocessing as mp
 import numpy as np
 import random
@@ -60,7 +61,6 @@ class BombeRLeWorld(object):
         self.t_crate = pygame.image.load('assets/crate.png')
 
         # Font for scores and such
-        # font_name = pygame.font.match_font('roboto')
         font_name = 'assets/emulogic.ttf'
         self.fonts = {
             'huge': pygame.font.Font(font_name, 20),
@@ -95,7 +95,7 @@ class BombeRLeWorld(object):
         self.active_agents = []
         self.bombs = []
         self.explosions = []
-        self.round_id = f'BombeRLe_replay_{time()}'
+        self.round_id = f'Replay {datetime.now().strftime("%Y-%m-%d %H:%M:%S")}'
 
         # Arena with wall and crate layout
         self.arena = (np.random.rand(s.cols, s.rows) > 0.25).astype(int)
@@ -139,6 +139,7 @@ class BombeRLeWorld(object):
                 'coins': [c.get_state() for c in self.coins],
                 'agents': [a.get_state() for a in self.agents],
                 'actions': dict([(a.name, []) for a in self.agents]),
+                'permutations': []
             }
 
         self.running = True
@@ -252,7 +253,10 @@ class BombeRLeWorld(object):
                 a.events.append(e.INTERRUPTED)
 
         # Perform decided agent actions
-        for a in self.active_agents:
+        perm = np.random.permutation(len(self.active_agents))
+        self.replay['permutations'].append(perm)
+        for i in perm:
+            a = self.active_agents[i]
             self.logger.debug(f'Collecting action from agent <{a.name}>')
             (action, t) = a.pipe.recv()
             self.logger.info(f'Agent <{a.name}> chose action {action} in {t:.2f}s.')
@@ -547,7 +551,9 @@ class ReplayWorld(BombeRLeWorld):
 
     def poll_and_run_agents(self):
         # Perform recorded agent actions
-        for a in self.active_agents:
+        perm = self.replay['permutations'][self.step-1]
+        for i in perm:
+            a = self.active_agents[i]
             self.logger.debug(f'Repeating action from agent <{a.name}>')
             action = self.replay['actions'][a.name][self.step-1]
             self.logger.info(f'Agent <{a.name}> chose action {action}.')
