@@ -1,6 +1,7 @@
 
 from time import time, sleep
 import os, signal
+from types import SimpleNamespace
 import multiprocessing as mp
 import importlib
 import logging
@@ -33,11 +34,14 @@ class AgentProcess(mp.Process):
         self.train_flag = train_flag
 
     def run(self):
+        # Fake self object to pass to callback methods
+        self.fake_self = SimpleNamespace()
+
         # Set up individual loggers for the wrapper and the custom code
         self.wlogger = logging.getLogger(self.name + '_wrapper')
         self.wlogger.setLevel(s.log_agent_wrapper)
-        self.logger = logging.getLogger(self.name + '_code')
-        self.logger.setLevel(s.log_agent_code)
+        self.fake_self.logger = logging.getLogger(self.name + '_code')
+        self.fake_self.logger.setLevel(s.log_agent_code)
         log_dir = f'agent_code/{self.agent_dir}/logs/'
         if not os.path.exists(log_dir): os.makedirs(log_dir)
         handler = logging.FileHandler(f'{log_dir}{self.name}.log', mode='w')
@@ -45,7 +49,7 @@ class AgentProcess(mp.Process):
         formatter = logging.Formatter('%(asctime)s [%(name)s] %(levelname)s: %(message)s')
         handler.setFormatter(formatter)
         self.wlogger.addHandler(handler)
-        self.logger.addHandler(handler)
+        self.fake_self.logger.addHandler(handler)
 
         # Import custom code for the agent from provided script
         self.wlogger.info(f'Import agent code from "agent_code/{self.agent_dir}/callbacks.py"')
@@ -54,7 +58,7 @@ class AgentProcess(mp.Process):
         # Initialize custom code
         self.wlogger.info('Initialize agent code')
         try:
-            self.code.setup(self)
+            self.code.setup(self.fake_self)
         except Exception as e:
             self.wlogger.exception(f'Error in callback function: {e}')
         self.wlogger.debug('Set flag to indicate readiness')
@@ -74,21 +78,21 @@ class AgentProcess(mp.Process):
             while True:
                 # Receive new game state and check for exit message
                 self.wlogger.debug('Receive game state')
-                self.game_state = self.pipe_to_world.recv()
-                if self.game_state['exit']:
+                self.fake_self.game_state = self.pipe_to_world.recv()
+                if self.fake_self.game_state['exit']:
                     self.ready_flag.set()
                     self.wlogger.info('Received exit message for round')
                     break
-                self.wlogger.info(f'STARTING STEP {self.game_state["step"]}')
+                self.wlogger.info(f'STARTING STEP {self.fake_self.game_state["step"]}')
 
                 # Process game events for rewards if in training mode
                 if self.train_flag.is_set():
                     self.wlogger.debug('Receive event queue')
-                    self.events = self.pipe_to_world.recv()
-                    self.wlogger.debug(f'Received event queue {self.events}')
+                    self.fake_self.events = self.pipe_to_world.recv()
+                    self.wlogger.debug(f'Received event queue {self.fake_self.events}')
                     self.wlogger.info('Process intermediate rewards')
                     try:
-                        self.code.reward_update(self)
+                        self.code.reward_update(self.fake_self)
                     except Exception as e:
                         self.wlogger.exception(f'Error in callback function: {e}')
                     self.wlogger.debug('Set flag to indicate readiness')
@@ -96,10 +100,10 @@ class AgentProcess(mp.Process):
 
                 # Come up with an action to perform
                 self.wlogger.debug('Begin choosing an action')
-                self.next_action = 'WAIT'
+                self.fake_self.next_action = 'WAIT'
                 t = time()
                 try:
-                    self.code.act(self)
+                    self.code.act(self.fake_self)
                 except KeyboardInterrupt:
                     self.wlogger.warn(f'Got interrupted by timeout')
                 except Exception as e:
@@ -108,9 +112,9 @@ class AgentProcess(mp.Process):
                 # Send action and time taken back to main process
                 with IgnoreKeyboardInterrupt():
                     t = time() - t
-                    self.wlogger.info(f'Chose action {self.next_action} after {t:.3f}s of thinking')
+                    self.wlogger.info(f'Chose action {self.fake_self.next_action} after {t:.3f}s of thinking')
                     self.wlogger.debug('Send action and time to main process')
-                    self.pipe_to_world.send((self.next_action, t))
+                    self.pipe_to_world.send((self.fake_self.next_action, t))
                     while self.ready_flag.is_set():
                         sleep(0.01)
                     self.wlogger.debug('Set flag to indicate readiness')
@@ -120,10 +124,10 @@ class AgentProcess(mp.Process):
             if self.train_flag.is_set():
                 self.wlogger.info('Finalize agent\'s training')
                 self.wlogger.debug('Receive final event queue')
-                self.events = self.pipe_to_world.recv()
-                self.wlogger.debug(f'Received final event queue {self.events}')
+                self.fake_self.events = self.pipe_to_world.recv()
+                self.wlogger.debug(f'Received final event queue {self.fake_self.events}')
                 try:
-                    self.code.end_of_episode(self)
+                    self.code.end_of_episode(self.fake_self)
                 except Exception as e:
                     self.wlogger.exception(f'Error in callback function: {e}')
                 self.ready_flag.set()
