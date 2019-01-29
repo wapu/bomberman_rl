@@ -34,8 +34,8 @@ class AgentProcess(mp.Process):
         self.train_flag = train_flag
 
     def run(self):
-        # Fake self object to pass to callback methods
-        self.fake_self = SimpleNamespace()
+        # Persistent 'self' object to pass to callback methods
+        self.fake_self = SimpleNamespace(name=self.name)
 
         # Set up individual loggers for the wrapper and the custom code
         self.wlogger = logging.getLogger(self.name + '_wrapper')
