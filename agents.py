@@ -162,9 +162,9 @@ class Agent(object):
 
         self.x, self.y = 1, 1
         self.total_score = 0
-        self.bomb_timer = 5
-        self.explosion_timer = 3
-        self.bomb_power = 3
+        self.bomb_timer = s.bomb_timer
+        self.explosion_timer = s.explosion_timer
+        self.bomb_power = s.bomb_power
         self.bomb_type = Bomb
 
         self.reset()
@@ -218,9 +218,9 @@ class ReplayAgent(Agent):
         self.shade.fill((0,0,0,208))
 
         self.total_score = 0
-        self.bomb_timer = 5
-        self.explosion_timer = 3
-        self.bomb_power = 3
+        self.bomb_timer = s.bomb_timer
+        self.explosion_timer = s.explosion_timer
+        self.bomb_power = s.bomb_power
         self.bomb_type = Bomb
 
         self.reset()

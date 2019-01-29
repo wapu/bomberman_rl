@@ -25,6 +25,9 @@ settings = {
     'max_agents': 4,
     'max_steps': 400,
     'stop_if_not_training': False,
+    'bomb_power': 3,
+    'bomb_timer': 5,
+    'explosion_timer': 3,
 
     # Rules for agents
     'timeout': 5.0,
