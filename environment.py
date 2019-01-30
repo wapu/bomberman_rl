@@ -301,7 +301,6 @@ class BombeRLeWorld(object):
 
         # Bombs
         for bomb in self.bombs:
-            bomb.timer -= 1
             # Explode when timer is finished
             if bomb.timer < 0:
                 self.logger.info(f'Agent <{bomb.owner.name}>\'s bomb at {(bomb.x, bomb.y)} explodes')
@@ -323,14 +322,14 @@ class BombeRLeWorld(object):
                 self.explosions.append(Explosion(blast_coords, screen_coords, bomb.owner))
                 bomb.active = False
                 bomb.owner.bombs_left += 1
+            # Progress countdown
+            else:
+                bomb.timer -= 1
         self.bombs = [b for b in self.bombs if b.active]
 
         # Explosions
         agents_hit = set()
         for explosion in self.explosions:
-            explosion.timer -= 1
-            if explosion.timer < 0:
-                explosion.active = False
             # Kill agents
             if explosion.timer > 0:
                 for a in self.active_agents:
@@ -347,6 +346,11 @@ class BombeRLeWorld(object):
                             explosion.owner.update_score(s.reward_kill)
                             explosion.owner.events.append(e.KILLED_OPPONENT)
                             explosion.owner.trophies.append(smoothscale(a.avatar, (15,15)))
+            # Show smoke for a little longer
+            if explosion.timer < 0:
+                explosion.active = False
+            # Progress countdown
+            explosion.timer -= 1
         for a in agents_hit:
             a.dead = True
             self.active_agents.remove(a)
@@ -622,7 +626,7 @@ class ReplayWorld(BombeRLeWorld):
             subprocess.call(['ffmpeg', '-y', '-framerate', f'{s.fps}',
                     '-f', 'image2', '-pattern_type', 'glob', '-i', f'screenshots/{self.replay_file}_*.png',
                     '-threads', '2', '-tile-columns', '2', '-frame-parallel', '0', '-g', '100', '-speed', '1',
-                    '-pix_fmt', 'yuv420p', '-qmin', '0', '-qmax', '10', '-crf', '5', '-b:v', '2M', '-c:v', 'libvpx',
+                    '-pix_fmt', 'yuv420p', '-qmin', '0', '-qmax', '10', '-crf', '5', '-b:v', '2M', '-c:v', 'libvpx-vp9',
                     f'screenshots/{self.replay_file}_video.webm'])
             for f in glob.glob(f'screenshots/{self.replay_file}_*.png'):
                 os.remove(f)

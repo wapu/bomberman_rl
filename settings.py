@@ -15,9 +15,9 @@ settings = {
     # Main loop
     'update_interval': 0.1, # 0.33,
     'turn_based': False,
-    'n_rounds': 1,
-    'save_replay': True,
-    'make_video_from_replay': True,
+    'n_rounds': 10,
+    'save_replay': False,
+    'make_video_from_replay': False,
 
     # Game properties
     'cols': 17,
@@ -28,8 +28,8 @@ settings = {
     'max_steps': 400,
     'stop_if_not_training': False,
     'bomb_power': 3,
-    'bomb_timer': 5,
-    'explosion_timer': 3,
+    'bomb_timer': 4,
+    'explosion_timer': 2,
 
     # Rules for agents
     'timeout': 5.0,
