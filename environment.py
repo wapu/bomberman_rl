@@ -18,7 +18,7 @@ from settings import s, e
 
 class BombeRLeWorld(object):
 
-    def __init__(self, agents, save_replay=False):
+    def __init__(self, agents):
         self.setup_logging()
         if s.gui:
             self.setup_gui()
@@ -30,7 +30,6 @@ class BombeRLeWorld(object):
         # Get the game going
         self.round = 0
         self.running = False
-        self.save_replay = save_replay
         self.ready_for_restart_flag = mp.Event()
         self.new_round()
 
@@ -358,20 +357,30 @@ class BombeRLeWorld(object):
             self.put_down_agent(a)
         self.explosions = [e for e in self.explosions if e.active]
 
+        if self.time_to_stop():
+            self.end_round()
+
+
+    def time_to_stop(self):
         # Check round stopping criteria
         if len(self.active_agents) == 0:
             self.logger.info(f'No agent left alive, wrap up round')
-            self.end_round()
-            return
+            return True
+        if (len(self.active_agents) == 1
+            and (self.arena == 1).sum() == 0
+            and all([not c.collectable for c in self.coins])
+            and len(self.bombs) + len(self.explosions) == 0):
+            self.logger.info(f'One agent left alive with nothing to do, wrap up round')
+            return True
         if s.stop_if_not_training:
             if not any([a.train_flag.is_set() for a in self.active_agents]):
                 self.logger.info('No training agent left alive, wrap up round')
-                self.end_round()
-                return
+                return True
         if self.step >= s.max_steps:
             self.logger.info('Maximum number of steps reached, wrap up round')
-            self.end_round()
-            return
+            return True
+
+        return False
 
 
     def end_round(self):
@@ -401,7 +410,8 @@ class BombeRLeWorld(object):
                 slowest.update_score(s.reward_slow)
                 slowest.trophies.append(Agent.time_trophy)
             # Save course of the game for future replay
-            if self.save_replay:
+            if s.save_replay:
+                self.replay['n_steps'] = self.step
                 with open(f'replays/{self.round_id}.pt', 'wb') as f:
                     pickle.dump(self.replay, f)
         else:
@@ -511,8 +521,10 @@ class ReplayWorld(BombeRLeWorld):
 
         self.logger.info(f'Loading replay file "{replay_file}"')
         self.replay_file = replay_file
-        with open(f'replays/{replay_file}', 'rb') as f:
+        with open(f'replays/{replay_file}.pt', 'rb') as f:
             self.replay = pickle.load(f)
+        if not 'n_steps' in self.replay:
+            self.replay['n_steps'] = s.max_steps
 
         # Recreate the agents
         self.colors = ['blue', 'green', 'yellow', 'pink']
@@ -523,7 +535,6 @@ class ReplayWorld(BombeRLeWorld):
 
         # Get the game going
         self.round = 1
-        self.save_replay = False
         self.ready_for_restart_flag = mp.Event()
         self.new_round()
 
@@ -538,6 +549,7 @@ class ReplayWorld(BombeRLeWorld):
         self.bombs = []
         self.explosions = []
         self.running = True
+        self.frame = 0
 
         # Game world and objects
         self.arena = np.array(self.replay['arena'])
@@ -560,6 +572,14 @@ class ReplayWorld(BombeRLeWorld):
             self.perform_agent_action(a, action)
 
 
+    def time_to_stop(self):
+        time_to_stop = super().time_to_stop()
+        if self.step == self.replay['n_steps']:
+            self.logger.info('Replay ends here, wrap up round')
+            time_to_stop = True
+        return time_to_stop
+
+
     def end_round(self):
         if self.running:
             self.running = False
@@ -580,5 +600,32 @@ class ReplayWorld(BombeRLeWorld):
         self.ready_for_restart_flag.set()
 
 
+    def render(self):
+        super().render()
+
+        # Save screenshot
+        if s.make_video_from_replay:
+            self.logger.debug(f'Saving screenshot for frame {self.frame}')
+            pygame.image.save(self.screen, f'screenshots/{self.replay_file}_{self.frame:05d}.png')
+        self.frame += 1
+
+
+    def end(self):
+        # Turn screenshots into videos
+        if s.make_video_from_replay:
+            self.logger.debug(f'Turning screenshots into video files')
+            import subprocess, os, glob
+            subprocess.call(['ffmpeg', '-y', '-framerate', f'{s.fps}',
+                    '-f', 'image2', '-pattern_type', 'glob', '-i', f'screenshots/{self.replay_file}_*.png',
+                    '-preset', 'veryslow', '-tune', 'animation', '-crf', '5', '-c:v', 'libx264', '-pix_fmt', 'yuv420p',
+                    f'screenshots/{self.replay_file}_video.mp4'])
+            subprocess.call(['ffmpeg', '-y', '-framerate', f'{s.fps}',
+                    '-f', 'image2', '-pattern_type', 'glob', '-i', f'screenshots/{self.replay_file}_*.png',
+                    '-threads', '2', '-tile-columns', '2', '-frame-parallel', '0', '-g', '100', '-speed', '1',
+                    '-pix_fmt', 'yuv420p', '-qmin', '0', '-qmax', '10', '-crf', '5', '-b:v', '2M', '-c:v', 'libvpx',
+                    f'screenshots/{self.replay_file}_video.webm'])
+            for f in glob.glob(f'screenshots/{self.replay_file}_*.png'):
+                os.remove(f)
+
+
     def put_down_agent(self, agent): pass
-    def end(self): pass

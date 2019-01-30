@@ -45,8 +45,8 @@ def main():
             ('simple_agent', True),
             ('simple_agent', True),
             ('simple_agent', True)
-        ], save_replay=False)
-    # world = ReplayWorld('Replay 2019-01-28 13:30:18.pt')
+        ])
+    # world = ReplayWorld('Replay 2019-01-30 16:57:42')
     user_inputs = []
 
     # Start game logic thread

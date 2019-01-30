@@ -105,3 +105,6 @@ venv.bak/
 
 .idea
 /models
+screenshots/*.png
+screenshots/*.mp4
+screenshots/*.webm
