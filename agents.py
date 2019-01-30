@@ -159,6 +159,12 @@ class Agent(object):
             assert self.avatar.get_size() == (30,30)
         except Exception as e:
             self.avatar = pygame.image.load(f'assets/robot_{self.color}.png')
+        # Load custom bomb sprite
+        try:
+            self.bomb_sprite = pygame.image.load(f'agent_code/{self.process.agent_dir}/bomb.png')
+            assert self.bomb_sprite.get_size() == (30,30)
+        except Exception as e:
+            self.bomb_sprite = None
 
         # Prepare overlay that will indicate dead agent on the scoreboard
         self.shade = pygame.Surface((30,30), SRCALPHA)
@@ -196,7 +202,9 @@ class Agent(object):
 
     def make_bomb(self):
         """Create a new Bomb object at current agent position."""
-        return self.bomb_type((self.x, self.y), self, self.bomb_timer, self.bomb_power, self.color)
+        return self.bomb_type((self.x, self.y), self,
+                              self.bomb_timer, self.bomb_power, self.color,
+                              custom_sprite=self.bomb_sprite)
 
     def render(self, screen, x, y):
         """Draw the agent's avatar to the screen at the given coordinates."""

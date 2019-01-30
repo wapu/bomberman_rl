@@ -29,7 +29,7 @@ class Coin(Item):
 
 class Bomb(Item):
 
-    def __init__(self, pos, owner, timer, power, color):
+    def __init__(self, pos, owner, timer, power, color, custom_sprite=None):
         super(Bomb, self).__init__()
         self.x = pos[0]
         self.y = pos[1]
@@ -37,7 +37,10 @@ class Bomb(Item):
         self.timer = timer
         self.power = power
 
-        self.avatar = pygame.image.load(f'assets/bomb_{color}.png')
+        if custom_sprite is None:
+            self.avatar = pygame.image.load(f'assets/bomb_{color}.png')
+        else:
+            self.avatar = custom_sprite
 
         self.active = True
 
